@@ -3,6 +3,10 @@
 import { db } from "@/lib/db"
 import { menuItems, orders, orderItems, deliveries, syncLogs } from "@/lib/db/schema"
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm"
+
+// Helper: cast date column and string to ::date for correct Postgres date comparison
+const dateGte = (col: any, d: string) => sql`${col}::date >= ${d}::date`
+const dateLte = (col: any, d: string) => sql`${col}::date <= ${d}::date`
 import { revalidatePath } from "next/cache"
 
 // ─── Google Sheets Sync ───────────────────────────────────────────────────
@@ -250,12 +254,12 @@ export async function syncShipdayData(startDate: string, endDate: string) {
 
 // ─── Dashboard Data Fetchers ──────────────────────────────────────────────
 export async function getOverviewKPIs(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orders.date, startDate),
-    lte(orders.date, endDate),
+  const orderDateFilter = [
+    sql`${orders.date}::date >= ${startDate}::date`,
+    sql`${orders.date}::date <= ${endDate}::date`,
     eq(orders.cancelled, false),
   ]
-  if (location && location !== "all") conditions.push(eq(orders.location, location))
+  if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
 
   const result = await db
     .select({
@@ -265,24 +269,28 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
       totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
     })
     .from(orders)
-    .where(and(...conditions))
+    .where(and(...orderDateFilter))
 
   const itemResult = await db
     .select({
       totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
-      totalCost: sql<number>`COALESCE(SUM(oi.qty::numeric * mi."costPrice"::numeric), 0)`,
+      totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${menuItems.costPrice}::numeric, 0)), 0)`,
     })
     .from(orderItems)
     .leftJoin(menuItems, eq(orderItems.itemName, menuItems.itemName))
-    .where(and(gte(orderItems.date, startDate), lte(orderItems.date, endDate), eq(orderItems.cancelled, false)))
+    .where(and(
+      sql`${orderItems.date}::date >= ${startDate}::date`,
+      sql`${orderItems.date}::date <= ${endDate}::date`,
+      eq(orderItems.cancelled, false)
+    ))
 
   return { ...result[0], ...itemResult[0] }
 }
 
 export async function getItemProfitability(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orderItems.date, startDate),
-    lte(orderItems.date, endDate),
+  const conditions: any[] = [
+    dateGte(orderItems.date, startDate),
+    dateLte(orderItems.date, endDate),
     eq(orderItems.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
@@ -309,9 +317,9 @@ export async function getItemProfitability(startDate: string, endDate: string, l
 }
 
 export async function getCategoryPerformance(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orderItems.date, startDate),
-    lte(orderItems.date, endDate),
+  const conditions: any[] = [
+    dateGte(orderItems.date, startDate),
+    dateLte(orderItems.date, endDate),
     eq(orderItems.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
@@ -333,7 +341,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
 }
 
 export async function getPlatformPerformance(startDate: string, endDate: string, location?: string) {
-  const conditions = [gte(orders.date, startDate), lte(orders.date, endDate), eq(orders.cancelled, false)]
+  const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
 
   return db
@@ -352,7 +360,7 @@ export async function getPlatformPerformance(startDate: string, endDate: string,
 }
 
 export async function getHourlyDemand(startDate: string, endDate: string, location?: string) {
-  const conditions = [gte(orders.date, startDate), lte(orders.date, endDate), eq(orders.cancelled, false)]
+  const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
 
   return db
@@ -397,9 +405,9 @@ export async function getMenuItems() {
 }
 
 export async function getOfferAnalysis(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orders.date, startDate),
-    lte(orders.date, endDate),
+  const conditions: any[] = [
+    dateGte(orders.date, startDate),
+    dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
@@ -424,9 +432,9 @@ export async function getOfferAnalysis(startDate: string, endDate: string, locat
 }
 
 export async function getCustomerInsights(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orders.date, startDate),
-    lte(orders.date, endDate),
+  const conditions: any[] = [
+    dateGte(orders.date, startDate),
+    dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
@@ -471,9 +479,9 @@ export async function getCustomerInsights(startDate: string, endDate: string, lo
 }
 
 export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orders.date, startDate),
-    lte(orders.date, endDate),
+  const conditions: any[] = [
+    dateGte(orders.date, startDate),
+    dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
@@ -510,9 +518,9 @@ export async function getHourlyDemandHeatmap(startDate: string, endDate: string,
 }
 
 export async function getModeBreakdown(startDate: string, endDate: string, location?: string) {
-  const conditions = [
-    gte(orders.date, startDate),
-    lte(orders.date, endDate),
+  const conditions: any[] = [
+    dateGte(orders.date, startDate),
+    dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
@@ -532,7 +540,7 @@ export async function getModeBreakdown(startDate: string, endDate: string, locat
 }
 
 export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string) {
-  const conditions = [gte(orders.date, startDate), lte(orders.date, endDate), eq(orders.cancelled, false)]
+  const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
 
   return db
