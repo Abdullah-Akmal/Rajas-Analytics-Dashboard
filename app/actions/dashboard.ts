@@ -27,11 +27,13 @@ export async function syncGoogleSheets() {
     // Get all sheet names first
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: spreadsheetId! })
     const sheetNames = spreadsheet.data.sheets?.map((s) => s.properties?.title).filter(Boolean) || []
+    console.log("[v0] Google Sheet names found:", sheetNames)
 
     // Find the menu-price sheet
     const menuSheet = sheetNames.find((name) =>
       name?.toLowerCase().includes("menu") || name?.toLowerCase().includes("price")
     ) || sheetNames[0]
+    console.log("[v0] Using sheet:", menuSheet)
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: spreadsheetId!,
@@ -39,6 +41,8 @@ export async function syncGoogleSheets() {
     })
 
     const rows = response.data.values || []
+    console.log("[v0] Total rows from sheet:", rows.length)
+    console.log("[v0] Headers row:", rows[0])
     if (rows.length < 2) return { success: false, error: "No data found in sheet" }
 
     const headers = rows[0].map((h: string) => h?.toString().toLowerCase().trim())
@@ -50,6 +54,8 @@ export async function syncGoogleSheets() {
     const typeIdx = headers.findIndex((h: string) => h.includes("type"))
 
     const items = rows.slice(1).filter((row: string[]) => row[nameIdx]?.toString().trim())
+    console.log("[v0] nameIdx:", nameIdx, "costIdx:", costIdx, "priceHPIdx:", priceHPIdx, "priceGAIdx:", priceGAIdx)
+    console.log("[v0] Items to insert:", items.length)
 
     // Clear existing items and re-insert
     await db.delete(menuItems)
@@ -105,7 +111,10 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
 
   try {
     const data = await prestoFetch(`/location/${locationId}/reports/shift/detailed?where=date:${dateStr}`)
-    const sales = data?.data || data?.sales || data || []
+    console.log("[v0] Presto raw response keys:", Object.keys(data || {}))
+    console.log("[v0] Presto data sample:", JSON.stringify(data).substring(0, 500))
+    const sales = data?.data || data?.sales || data?.shifts || data?.results || (Array.isArray(data) ? data : [])
+    console.log("[v0] Presto sales count:", Array.isArray(sales) ? sales.length : "not array, type: " + typeof sales)
 
     let orderCount = 0
     let itemCount = 0
@@ -207,7 +216,10 @@ export async function syncShipdayData(startDate: string, endDate: string) {
 
     if (!res.ok) throw new Error(`Shipday API error: ${res.status}`)
     const data = await res.json()
-    const shipdayOrders = data?.orders || data || []
+    console.log("[v0] Shipday raw response keys:", Object.keys(data || {}))
+    console.log("[v0] Shipday data sample:", JSON.stringify(data).substring(0, 500))
+    const shipdayOrders = data?.orders || data?.data || data?.deliveries || (Array.isArray(data) ? data : [])
+    console.log("[v0] Shipday orders count:", Array.isArray(shipdayOrders) ? shipdayOrders.length : "not array")
 
     let count = 0
     for (const order of Array.isArray(shipdayOrders) ? shipdayOrders : []) {
