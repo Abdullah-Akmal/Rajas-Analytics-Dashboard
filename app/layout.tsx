@@ -10,9 +10,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: "Rajas Analytics Dashboard",
+  description: "Restaurant analytics and profitability dashboard for Rajas — Hyde Park & Grand Arcade",
+  generator: "v0.app",
   icons: {
     icon: [
       {
