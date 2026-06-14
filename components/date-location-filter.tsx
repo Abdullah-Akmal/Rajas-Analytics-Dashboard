@@ -65,7 +65,7 @@ export function DateLocationFilter({ onFilterChange, defaultLocation = "all" }: 
           className="h-8 text-xs w-36"
         />
       </div>
-      <Select value={location} onValueChange={setLocation}>
+      <Select value={location} onValueChange={(v) => setLocation(v ?? "all")}>
         <SelectTrigger className="h-8 text-xs w-40">
           <SelectValue />
         </SelectTrigger>

@@ -35,6 +35,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.10.1)(kysely@0.29.2)(pg@8.21.0)
+      google-auth-library:
+        specifier: ^10.7.0
+        version: 10.7.0
       googleapis:
         specifier: ^173.0.0
         version: 173.0.0

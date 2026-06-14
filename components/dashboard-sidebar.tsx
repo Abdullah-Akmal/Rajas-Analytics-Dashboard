@@ -69,11 +69,12 @@ export function DashboardSidebar() {
             <SidebarMenu>
               {navItems.slice(0, 5).map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </Link>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    render={<Link href={item.href} />}
+                  >
+                    <item.icon className="size-4" />
+                    <span>{item.label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -87,11 +88,12 @@ export function DashboardSidebar() {
             <SidebarMenu>
               {navItems.slice(5, 8).map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </Link>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    render={<Link href={item.href} />}
+                  >
+                    <item.icon className="size-4" />
+                    <span>{item.label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -105,21 +107,22 @@ export function DashboardSidebar() {
             <SidebarMenu>
               {navItems.slice(8).map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                      {item.label === "Alerts" && (
-                        <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0">
-                          Live
-                        </Badge>
-                      )}
-                      {item.label === "Action Panel" && (
-                        <Badge className="ml-auto text-[10px] px-1.5 py-0 bg-primary text-primary-foreground">
-                          New
-                        </Badge>
-                      )}
-                    </Link>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    render={<Link href={item.href} />}
+                  >
+                    <item.icon className="size-4" />
+                    <span>{item.label}</span>
+                    {item.label === "Alerts" && (
+                      <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0">
+                        Live
+                      </Badge>
+                    )}
+                    {item.label === "Action Panel" && (
+                      <Badge className="ml-auto text-[10px] px-1.5 py-0 bg-primary text-primary-foreground">
+                        New
+                      </Badge>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

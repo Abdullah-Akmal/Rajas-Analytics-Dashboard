@@ -52,9 +52,9 @@ export async function syncGoogleSheets() {
 
     const itemsToInsert = items.map((row: string[]) => ({
       itemName: row[nameIdx]?.toString().trim() || "",
-      costPrice: row[costIdx] ? parseFloat(row[costIdx].toString().replace(/[£,$]/g, "")) || null : null,
-      sellingPriceHydePark: priceHPIdx >= 0 && row[priceHPIdx] ? parseFloat(row[priceHPIdx].toString().replace(/[£,$]/g, "")) || null : null,
-      sellingPriceGrandArcade: priceGAIdx >= 0 && row[priceGAIdx] ? parseFloat(row[priceGAIdx].toString().replace(/[£,$]/g, "")) || null : null,
+      costPrice: row[costIdx] ? (parseFloat(row[costIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
+      sellingPriceHydePark: priceHPIdx >= 0 && row[priceHPIdx] ? (parseFloat(row[priceHPIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
+      sellingPriceGrandArcade: priceGAIdx >= 0 && row[priceGAIdx] ? (parseFloat(row[priceGAIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
       category: catIdx >= 0 ? row[catIdx]?.toString().trim() || null : null,
       itemType: typeIdx >= 0 ? row[typeIdx]?.toString().trim() || null : null,
       lastSyncedAt: new Date(),
@@ -394,6 +394,141 @@ export async function getSyncLogs() {
 
 export async function getMenuItems() {
   return db.select().from(menuItems).orderBy(menuItems.itemName)
+}
+
+export async function getOfferAnalysis(startDate: string, endDate: string, location?: string) {
+  const conditions = [
+    gte(orders.date, startDate),
+    lte(orders.date, endDate),
+    eq(orders.cancelled, false),
+  ]
+  if (location && location !== "all") conditions.push(eq(orders.location, location))
+
+  const discountedOrders = await db
+    .select({
+      date: orders.date,
+      location: orders.location,
+      orderChannel: sql<string>`COALESCE(${orders.orderChannel}, ${orders.platform}, 'Unknown')`,
+      totalOrders: sql<number>`COUNT(*)`,
+      discountedOrders: sql<number>`COUNT(CASE WHEN ${orders.discountValue}::numeric > 0 THEN 1 END)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+      totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
+      avgDiscount: sql<number>`COALESCE(AVG(CASE WHEN ${orders.discountValue}::numeric > 0 THEN ${orders.discountValue}::numeric END), 0)`,
+    })
+    .from(orders)
+    .where(and(...conditions))
+    .groupBy(orders.date, orders.location, sql`COALESCE(${orders.orderChannel}, ${orders.platform}, 'Unknown')`)
+    .orderBy(orders.date)
+
+  return discountedOrders
+}
+
+export async function getCustomerInsights(startDate: string, endDate: string, location?: string) {
+  const conditions = [
+    gte(orders.date, startDate),
+    lte(orders.date, endDate),
+    eq(orders.cancelled, false),
+  ]
+  if (location && location !== "all") conditions.push(eq(orders.location, location))
+
+  const customerData = await db
+    .select({
+      customerId: orders.customerId,
+      orderCount: sql<number>`COUNT(*)`,
+      totalSpend: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+      avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+      firstOrder: sql<string>`MIN(${orders.date})`,
+      lastOrder: sql<string>`MAX(${orders.date})`,
+      platform: sql<string>`COALESCE(MAX(${orders.orderChannel}), MAX(${orders.platform}), 'Unknown')`,
+    })
+    .from(orders)
+    .where(and(...conditions, sql`${orders.customerId} IS NOT NULL`))
+    .groupBy(orders.customerId)
+    .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
+
+  // Segment customers
+  const newCustomers = customerData.filter((c) => Number(c.orderCount) === 1).length
+  const returning = customerData.filter((c) => Number(c.orderCount) >= 2).length
+  const loyal = customerData.filter((c) => Number(c.orderCount) >= 5).length
+  const totalRevenue = customerData.reduce((s, c) => s + Number(c.totalSpend), 0)
+  const loyalRevenue = customerData.filter((c) => Number(c.orderCount) >= 5).reduce((s, c) => s + Number(c.totalSpend), 0)
+
+  return {
+    customers: customerData.slice(0, 50),
+    summary: {
+      totalCustomers: customerData.length,
+      newCustomers,
+      returning,
+      loyal,
+      totalRevenue,
+      loyalRevenue,
+      avgOrdersPerCustomer: customerData.length > 0
+        ? customerData.reduce((s, c) => s + Number(c.orderCount), 0) / customerData.length
+        : 0,
+      avgSpendPerCustomer: customerData.length > 0 ? totalRevenue / customerData.length : 0,
+    },
+  }
+}
+
+export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string) {
+  const conditions = [
+    gte(orders.date, startDate),
+    lte(orders.date, endDate),
+    eq(orders.cancelled, false),
+  ]
+  if (location && location !== "all") conditions.push(eq(orders.location, location))
+
+  // Get daily totals grouped by date only (Presto doesn't store exact hour in orders table)
+  const daily = await db
+    .select({
+      date: orders.date,
+      location: orders.location,
+      totalOrders: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+      avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+      mode: orders.mode,
+    })
+    .from(orders)
+    .where(and(...conditions))
+    .groupBy(orders.date, orders.location, orders.mode)
+    .orderBy(orders.date)
+
+  // Day-of-week breakdown
+  const dowBreakdown = await db
+    .select({
+      dayOfWeek: sql<number>`EXTRACT(DOW FROM ${orders.date}::date)`,
+      totalOrders: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+      avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+    })
+    .from(orders)
+    .where(and(...conditions))
+    .groupBy(sql`EXTRACT(DOW FROM ${orders.date}::date)`)
+    .orderBy(sql`EXTRACT(DOW FROM ${orders.date}::date)`)
+
+  return { daily, dowBreakdown }
+}
+
+export async function getModeBreakdown(startDate: string, endDate: string, location?: string) {
+  const conditions = [
+    gte(orders.date, startDate),
+    lte(orders.date, endDate),
+    eq(orders.cancelled, false),
+  ]
+  if (location && location !== "all") conditions.push(eq(orders.location, location))
+
+  return db
+    .select({
+      mode: sql<string>`COALESCE(${orders.mode}, 'Unknown')`,
+      totalOrders: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+      avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+      totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
+    })
+    .from(orders)
+    .where(and(...conditions))
+    .groupBy(sql`COALESCE(${orders.mode}, 'Unknown')`)
+    .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
 export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string) {
