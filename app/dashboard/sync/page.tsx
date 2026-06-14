@@ -24,9 +24,63 @@ export default function SyncPage() {
   const [logs, setLogs] = useState<SyncLog[]>([])
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [messages, setMessages] = useState<Record<string, string>>({})
-  const [prestoDate, setPrestoDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [prestoStartDate, setPrestoStartDate] = useState(format(new Date(Date.now() - 7 * 86400000), "yyyy-MM-dd"))
+  const [prestoEndDate, setPrestoEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [prestoProgress, setPrestoProgress] = useState("")
   const [shipdayStart, setShipdayStart] = useState(format(new Date(Date.now() - 7 * 86400000), "yyyy-MM-dd"))
   const [shipdayEnd, setShipdayEnd] = useState(format(new Date(), "yyyy-MM-dd"))
+
+  const getDatesInRange = (start: string, end: string): string[] => {
+    const dates: string[] = []
+    const cur = new Date(start)
+    const endD = new Date(end)
+    while (cur <= endD) {
+      dates.push(format(cur, "yyyy-MM-dd"))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return dates
+  }
+
+  const getDayCount = () => getDatesInRange(prestoStartDate, prestoEndDate).length
+
+  const runPrestoRange = async (locationKey: "HYDE_PARK" | "GRAND_ARCADE" | "BOTH") => {
+    const dates = getDatesInRange(prestoStartDate, prestoEndDate)
+    const locations: Array<"HYDE_PARK" | "GRAND_ARCADE"> =
+      locationKey === "BOTH" ? ["HYDE_PARK", "GRAND_ARCADE"] : [locationKey]
+    const keys = locationKey === "BOTH" ? ["presto_hp", "presto_ga"] : [locationKey === "HYDE_PARK" ? "presto_hp" : "presto_ga"]
+
+    keys.forEach((k) => setLoading((p) => ({ ...p, [k]: true })))
+    setPrestoProgress(`Starting sync for ${dates.length} day${dates.length > 1 ? "s" : ""}...`)
+
+    const totals: Record<string, number> = { HYDE_PARK: 0, GRAND_ARCADE: 0 }
+    let hadError = ""
+
+    // Process one date at a time but both locations in parallel per date
+    for (let i = 0; i < dates.length; i++) {
+      const d = dates[i]
+      setPrestoProgress(`Day ${i + 1} of ${dates.length}: ${d}`)
+      try {
+        const results = await Promise.all(locations.map((loc) => syncPrestoData(d, loc)))
+        results.forEach((result, idx) => {
+          if (result.success) totals[locations[idx]] += result.orders ?? 0
+          else hadError = result.error ?? "Unknown error"
+        })
+      } catch (e) {
+        hadError = e instanceof Error ? e.message : "Unknown error"
+      }
+    }
+
+    keys.forEach((k) => setLoading((p) => ({ ...p, [k]: false })))
+    const totalAll = Object.values(totals).reduce((a, b) => a + b, 0)
+    const summary = hadError
+      ? `Error: ${hadError}`
+      : locationKey === "BOTH"
+      ? `Synced ${totals.HYDE_PARK} Hyde Park + ${totals.GRAND_ARCADE} Grand Arcade orders (${dates.length} days)`
+      : `Synced ${totalAll} orders across ${dates.length} days`
+    setPrestoProgress(summary)
+    keys.forEach((k) => setMessages((p) => ({ ...p, [k]: summary })))
+    fetchLogs()
+  }
 
   const fetchLogs = async () => {
     const l = await getSyncLogs()
@@ -111,39 +165,53 @@ export default function SyncPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-muted-foreground">Date to sync</label>
-              <Input
-                type="date"
-                value={prestoDate}
-                onChange={(e) => setPrestoDate(e.target.value)}
-                className="h-8 text-xs"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-muted-foreground">Date range</label>
+                <span className="text-xs text-muted-foreground">
+                  {getDayCount()} day{getDayCount() !== 1 ? "s" : ""}
+                  {getDayCount() > 7 && <span className="text-warning ml-1">— may be slow</span>}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Input type="date" value={prestoStartDate} onChange={(e) => setPrestoStartDate(e.target.value)} className="h-8 text-xs" />
+                <Input type="date" value={prestoEndDate} onChange={(e) => setPrestoEndDate(e.target.value)} className="h-8 text-xs" />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                ~{getDayCount() * 13}s estimated ({getDayCount() * 13 > 60 ? `${Math.ceil(getDayCount() * 13 / 60)} min` : `${getDayCount() * 13}s`})
+              </p>
             </div>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={loading.presto_hp || loading.presto_ga}
+              onClick={() => runPrestoRange("BOTH")}
+            >
+              <RefreshCw className={`size-3.5 mr-2 ${(loading.presto_hp || loading.presto_ga) ? "animate-spin" : ""}`} />
+              {(loading.presto_hp || loading.presto_ga) ? prestoProgress || "Syncing..." : "Sync Both Locations"}
+            </Button>
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
                 className="flex-1 text-xs"
-                disabled={loading.presto_hp}
-                onClick={() => run("presto_hp", () => syncPrestoData(prestoDate, "HYDE_PARK"))}
+                disabled={loading.presto_hp || loading.presto_ga}
+                onClick={() => runPrestoRange("HYDE_PARK")}
               >
-                <RefreshCw className={`size-3 mr-1 ${loading.presto_hp ? "animate-spin" : ""}`} />
-                Hyde Park
+                Hyde Park only
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="flex-1 text-xs"
-                disabled={loading.presto_ga}
-                onClick={() => run("presto_ga", () => syncPrestoData(prestoDate, "GRAND_ARCADE"))}
+                disabled={loading.presto_hp || loading.presto_ga}
+                onClick={() => runPrestoRange("GRAND_ARCADE")}
               >
-                <RefreshCw className={`size-3 mr-1 ${loading.presto_ga ? "animate-spin" : ""}`} />
-                Grand Arcade
+                Grand Arcade only
               </Button>
             </div>
-            {(messages.presto_hp || messages.presto_ga) && (
-              <p className={`text-xs ${(messages.presto_hp || messages.presto_ga).startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
-                {messages.presto_hp || messages.presto_ga}
+            {prestoProgress && (
+              <p className={`text-xs ${prestoProgress.startsWith("Error") ? "text-destructive" : (loading.presto_hp || loading.presto_ga) ? "text-muted-foreground animate-pulse" : "text-[oklch(0.7_0.15_150)]"}`}>
+                {prestoProgress}
               </p>
             )}
           </CardContent>
