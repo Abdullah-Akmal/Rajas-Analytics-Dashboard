@@ -18,7 +18,7 @@ export async function syncGoogleSheets() {
     })
 
     const sheets = google.sheets({ version: "v4", auth })
-    const spreadsheetId = process.env.GOOGLE_SHEET_ID
+    const spreadsheetId = process.env.GOOGLE_SHEET_ID || "1mWyvmYnTz7Ewe2vzAkS_st1Ti9aLxPO-WW8IV8LCUP8"
 
     // Get all sheet names first
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: spreadsheetId! })
