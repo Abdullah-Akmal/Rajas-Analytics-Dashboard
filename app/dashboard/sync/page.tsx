@@ -24,9 +24,43 @@ export default function SyncPage() {
   const [logs, setLogs] = useState<SyncLog[]>([])
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [messages, setMessages] = useState<Record<string, string>>({})
-  const [prestoDate, setPrestoDate] = useState(format(new Date(), "yyyy-MM-dd"))
-  const [shipdayStart, setShipdayStart] = useState(format(new Date(Date.now() - 7 * 86400000), "yyyy-MM-dd"))
+  const [prestoStartDate, setPrestoStartDate] = useState(format(new Date(Date.now() - 30 * 86400000), "yyyy-MM-dd"))
+  const [prestoEndDate, setPrestoEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [shipdayStart, setShipdayStart] = useState(format(new Date(Date.now() - 30 * 86400000), "yyyy-MM-dd"))
   const [shipdayEnd, setShipdayEnd] = useState(format(new Date(), "yyyy-MM-dd"))
+
+  // Build array of dates between start and end inclusive
+  const getDatesInRange = (start: string, end: string): string[] => {
+    const dates: string[] = []
+    const cur = new Date(start)
+    const endD = new Date(end)
+    while (cur <= endD) {
+      dates.push(format(cur, "yyyy-MM-dd"))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return dates
+  }
+
+  const runPrestoRange = async (locationKey: "HYDE_PARK" | "GRAND_ARCADE") => {
+    const key = locationKey === "HYDE_PARK" ? "presto_hp" : "presto_ga"
+    const dates = getDatesInRange(prestoStartDate, prestoEndDate)
+    setLoading((p) => ({ ...p, [key]: true }))
+    setMessages((p) => ({ ...p, [key]: `Syncing ${dates.length} days...` }))
+    let totalOrders = 0
+    let hadError = ""
+    for (const d of dates) {
+      try {
+        const result = await syncPrestoData(d, locationKey)
+        if (result.success) totalOrders += result.orders ?? 0
+        else hadError = result.error ?? "Unknown error"
+      } catch (e) {
+        hadError = e instanceof Error ? e.message : "Unknown error"
+      }
+    }
+    setLoading((p) => ({ ...p, [key]: false }))
+    setMessages((p) => ({ ...p, [key]: hadError ? `Error: ${hadError}` : `Synced ${totalOrders} orders across ${dates.length} days` }))
+    fetchLogs()
+  }
 
   const fetchLogs = async () => {
     const l = await getSyncLogs()
@@ -111,13 +145,11 @@ export default function SyncPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-muted-foreground">Date to sync</label>
-              <Input
-                type="date"
-                value={prestoDate}
-                onChange={(e) => setPrestoDate(e.target.value)}
-                className="h-8 text-xs"
-              />
+              <label className="text-xs text-muted-foreground">Date range</label>
+              <div className="flex gap-2">
+                <Input type="date" value={prestoStartDate} onChange={(e) => setPrestoStartDate(e.target.value)} className="h-8 text-xs" />
+                <Input type="date" value={prestoEndDate} onChange={(e) => setPrestoEndDate(e.target.value)} className="h-8 text-xs" />
+              </div>
             </div>
             <div className="flex gap-2">
               <Button
@@ -125,20 +157,20 @@ export default function SyncPage() {
                 variant="outline"
                 className="flex-1 text-xs"
                 disabled={loading.presto_hp}
-                onClick={() => run("presto_hp", () => syncPrestoData(prestoDate, "HYDE_PARK"))}
+                onClick={() => runPrestoRange("HYDE_PARK")}
               >
                 <RefreshCw className={`size-3 mr-1 ${loading.presto_hp ? "animate-spin" : ""}`} />
-                Hyde Park
+                {loading.presto_hp ? "Syncing..." : "Hyde Park"}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="flex-1 text-xs"
                 disabled={loading.presto_ga}
-                onClick={() => run("presto_ga", () => syncPrestoData(prestoDate, "GRAND_ARCADE"))}
+                onClick={() => runPrestoRange("GRAND_ARCADE")}
               >
                 <RefreshCw className={`size-3 mr-1 ${loading.presto_ga ? "animate-spin" : ""}`} />
-                Grand Arcade
+                {loading.presto_ga ? "Syncing..." : "Grand Arcade"}
               </Button>
             </div>
             {(messages.presto_hp || messages.presto_ga) && (

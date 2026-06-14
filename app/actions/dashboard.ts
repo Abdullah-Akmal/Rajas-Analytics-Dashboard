@@ -27,13 +27,15 @@ export async function syncGoogleSheets() {
     // Get all sheet names first
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: spreadsheetId! })
     const sheetNames = spreadsheet.data.sheets?.map((s) => s.properties?.title).filter(Boolean) || []
-    console.log("[v0] Google Sheet names found:", sheetNames)
 
-    // Find the menu-price sheet
+    // Find the menu-price sheet — prefer exact match, fallback to first sheet
     const menuSheet = sheetNames.find((name) =>
+      name?.toLowerCase().includes("menu-price") ||
+      name?.toLowerCase().includes("menu price") ||
+      name?.toLowerCase() === "menu-price"
+    ) || sheetNames.find((name) =>
       name?.toLowerCase().includes("menu") || name?.toLowerCase().includes("price")
     ) || sheetNames[0]
-    console.log("[v0] Using sheet:", menuSheet)
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: spreadsheetId!,
@@ -41,30 +43,52 @@ export async function syncGoogleSheets() {
     })
 
     const rows = response.data.values || []
-    console.log("[v0] Total rows from sheet:", rows.length)
-    console.log("[v0] Headers row:", rows[0])
-    if (rows.length < 2) return { success: false, error: "No data found in sheet" }
+    if (rows.length < 2) return { success: false, error: `No data found in sheet: ${menuSheet}` }
 
     const headers = rows[0].map((h: string) => h?.toString().toLowerCase().trim())
-    const nameIdx = headers.findIndex((h: string) => h.includes("item") || h.includes("name") || h.includes("product"))
-    const costIdx = headers.findIndex((h: string) => h.includes("cost") || h.includes("ingredient"))
-    const priceHPIdx = headers.findIndex((h: string) => h.includes("hyde") || (h.includes("price") && !h.includes("grand")))
-    const priceGAIdx = headers.findIndex((h: string) => h.includes("grand") || h.includes("arcade"))
-    const catIdx = headers.findIndex((h: string) => h.includes("categor"))
-    const typeIdx = headers.findIndex((h: string) => h.includes("type"))
 
-    const items = rows.slice(1).filter((row: string[]) => row[nameIdx]?.toString().trim())
-    console.log("[v0] nameIdx:", nameIdx, "costIdx:", costIdx, "priceHPIdx:", priceHPIdx, "priceGAIdx:", priceGAIdx)
-    console.log("[v0] Items to insert:", items.length)
+    // Flexible header detection — works with various naming conventions
+    const nameIdx = headers.findIndex((h: string) =>
+      h.includes("item") || h.includes("name") || h.includes("product") || h.includes("description") || h.includes("menu")
+    )
+    const costIdx = headers.findIndex((h: string) =>
+      h.includes("cost") || h.includes("ingredient") || h.includes("cogs") || h.includes("cost price")
+    )
+    const priceHPIdx = headers.findIndex((h: string) =>
+      h.includes("hyde") || h.includes("hp") || (h.includes("sell") && !h.includes("grand") && !h.includes("ga"))
+    )
+    const priceGAIdx = headers.findIndex((h: string) =>
+      h.includes("grand") || h.includes("arcade") || h.includes("ga")
+    )
+    // If no location-specific price found, look for generic selling price
+    const genericPriceIdx = (priceHPIdx === -1 && priceGAIdx === -1)
+      ? headers.findIndex((h: string) => h.includes("price") || h.includes("sell") || h.includes("retail"))
+      : -1
+    const catIdx = headers.findIndex((h: string) => h.includes("categor") || h.includes("group") || h.includes("section"))
+    const typeIdx = headers.findIndex((h: string) => h.includes("type") || h.includes("kind"))
+
+    // If no item name column found, use first column
+    const resolvedNameIdx = nameIdx >= 0 ? nameIdx : 0
+    const items = rows.slice(1).filter((row: string[]) => row[resolvedNameIdx]?.toString().trim())
 
     // Clear existing items and re-insert
     await db.delete(menuItems)
 
     const itemsToInsert = items.map((row: string[]) => ({
-      itemName: row[nameIdx]?.toString().trim() || "",
-      costPrice: row[costIdx] ? (parseFloat(row[costIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
-      sellingPriceHydePark: priceHPIdx >= 0 && row[priceHPIdx] ? (parseFloat(row[priceHPIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
-      sellingPriceGrandArcade: priceGAIdx >= 0 && row[priceGAIdx] ? (parseFloat(row[priceGAIdx].toString().replace(/[£,$]/g, "")) || null)?.toString() ?? null : null,
+      itemName: row[resolvedNameIdx]?.toString().trim() || "",
+      costPrice: costIdx >= 0 && row[costIdx]
+        ? (parseFloat(row[costIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
+        : null,
+      sellingPriceHydePark: priceHPIdx >= 0 && row[priceHPIdx]
+        ? (parseFloat(row[priceHPIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
+        : genericPriceIdx >= 0 && row[genericPriceIdx]
+        ? (parseFloat(row[genericPriceIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
+        : null,
+      sellingPriceGrandArcade: priceGAIdx >= 0 && row[priceGAIdx]
+        ? (parseFloat(row[priceGAIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
+        : genericPriceIdx >= 0 && row[genericPriceIdx]
+        ? (parseFloat(row[genericPriceIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
+        : null,
       category: catIdx >= 0 ? row[catIdx]?.toString().trim() || null : null,
       itemType: typeIdx >= 0 ? row[typeIdx]?.toString().trim() || null : null,
       lastSyncedAt: new Date(),
@@ -111,10 +135,8 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
 
   try {
     const data = await prestoFetch(`/location/${locationId}/reports/shift/detailed?where=date:${dateStr}`)
-    console.log("[v0] Presto raw response keys:", Object.keys(data || {}))
-    console.log("[v0] Presto data sample:", JSON.stringify(data).substring(0, 500))
-    const sales = data?.data || data?.sales || data?.shifts || data?.results || (Array.isArray(data) ? data : [])
-    console.log("[v0] Presto sales count:", Array.isArray(sales) ? sales.length : "not array, type: " + typeof sales)
+    // Presto response: { data: { shifts: [...], sales: [...], "pay-in-outs": [...] } }
+    const sales = data?.data?.sales || data?.sales || (Array.isArray(data) ? data : [])
 
     let orderCount = 0
     let itemCount = 0
@@ -214,12 +236,10 @@ export async function syncShipdayData(startDate: string, endDate: string) {
       body: JSON.stringify({ startDate, endDate, pageSize: 100 }),
     })
 
-    if (!res.ok) throw new Error(`Shipday API error: ${res.status}`)
+    if (!res.ok) throw new Error(`Shipday API error: ${res.status} ${await res.text()}`)
     const data = await res.json()
-    console.log("[v0] Shipday raw response keys:", Object.keys(data || {}))
-    console.log("[v0] Shipday data sample:", JSON.stringify(data).substring(0, 500))
-    const shipdayOrders = data?.orders || data?.data || data?.deliveries || (Array.isArray(data) ? data : [])
-    console.log("[v0] Shipday orders count:", Array.isArray(shipdayOrders) ? shipdayOrders.length : "not array")
+    // Shipday returns direct array of orders
+    const shipdayOrders = Array.isArray(data) ? data : (data?.orders || data?.data || [])
 
     let count = 0
     for (const order of Array.isArray(shipdayOrders) ? shipdayOrders : []) {
