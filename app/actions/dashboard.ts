@@ -24,78 +24,136 @@ export async function syncGoogleSheets() {
     const sheets = google.sheets({ version: "v4", auth })
     const spreadsheetId = process.env.GOOGLE_SHEET_ID || "1mWyvmYnTz7Ewe2vzAkS_st1Ti9aLxPO-WW8IV8LCUP8"
 
-    // Get all sheet names first
+    // Get all sheet tabs
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: spreadsheetId! })
     const sheetNames = spreadsheet.data.sheets?.map((s) => s.properties?.title).filter(Boolean) || []
-
-    // Find the menu-price sheet — prefer exact match, fallback to first sheet
-    const menuSheet = sheetNames.find((name) =>
-      name?.toLowerCase().includes("menu-price") ||
-      name?.toLowerCase().includes("menu price") ||
-      name?.toLowerCase() === "menu-price"
-    ) || sheetNames.find((name) =>
-      name?.toLowerCase().includes("menu") || name?.toLowerCase().includes("price")
+    const menuSheet = sheetNames.find((n) =>
+      n?.toLowerCase().includes("menu") || n?.toLowerCase().includes("price") || n?.toLowerCase().includes("costing")
     ) || sheetNames[0]
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: spreadsheetId!,
-      range: `${menuSheet}!A:Z`,
+      range: `${menuSheet}!A:AH`,
     })
 
-    const rows = response.data.values || []
+    const rows: string[][] = (response.data.values || []) as string[][]
     if (rows.length < 2) return { success: false, error: `No data found in sheet: ${menuSheet}` }
 
-    const headers = rows[0].map((h: string) => h?.toString().toLowerCase().trim())
+    // Helper to parse a £ value from a cell, returns null if not a valid number
+    const parsePrice = (val: string | undefined): string | null => {
+      if (!val) return null
+      const n = parseFloat(val.toString().replace(/[£$€,\s]/g, ""))
+      return isNaN(n) || n <= 0 ? null : n.toString()
+    }
 
-    // Flexible header detection — works with various naming conventions
-    const nameIdx = headers.findIndex((h: string) =>
-      h.includes("item") || h.includes("name") || h.includes("product") || h.includes("description") || h.includes("menu")
-    )
-    const costIdx = headers.findIndex((h: string) =>
-      h.includes("cost") || h.includes("ingredient") || h.includes("cogs") || h.includes("cost price")
-    )
-    const priceHPIdx = headers.findIndex((h: string) =>
-      h.includes("hyde") || h.includes("hp") || (h.includes("sell") && !h.includes("grand") && !h.includes("ga"))
-    )
-    const priceGAIdx = headers.findIndex((h: string) =>
-      h.includes("grand") || h.includes("arcade") || h.includes("ga")
-    )
-    // If no location-specific price found, look for generic selling price
-    const genericPriceIdx = (priceHPIdx === -1 && priceGAIdx === -1)
-      ? headers.findIndex((h: string) => h.includes("price") || h.includes("sell") || h.includes("retail"))
-      : -1
-    const catIdx = headers.findIndex((h: string) => h.includes("categor") || h.includes("group") || h.includes("section"))
-    const typeIdx = headers.findIndex((h: string) => h.includes("type") || h.includes("kind"))
+    // Detect section type from a header row (the "Product No. / Name / Description / ..." row)
+    // Returns: "pizza" | "solo_meal" | "simple" | null
+    const detectSectionType = (row: string[]): "pizza" | "solo_meal" | "simple" | null => {
+      const cells = row.map((c) => c?.toString().toLowerCase().trim())
+      if (cells.some((c) => c.includes("8\"") || c.includes("8 pizza") || c.includes("12\" pizza") || c.includes("12\" cost"))) return "pizza"
+      if (cells.some((c) => c === "solo cost" || c === "meal cost")) return "solo_meal"
+      if (cells[1]?.includes("name") || cells[1] === "name ") {
+        // Check col D header for cost type
+        const colD = cells[3] || ""
+        if (colD.includes("cost")) return "simple"
+      }
+      return null
+    }
 
-    // If no item name column found, use first column
-    const resolvedNameIdx = nameIdx >= 0 ? nameIdx : 0
-    const items = rows.slice(1).filter((row: string[]) => row[resolvedNameIdx]?.toString().trim())
+    // Walk rows, detect sections, extract items
+    const itemsToInsert: Array<{
+      itemName: string
+      costPrice: string | null
+      sellingPriceHydePark: string | null
+      sellingPriceGrandArcade: string | null
+      category: string | null
+      itemType: string | null
+      lastSyncedAt: Date
+    }> = []
+
+    let currentCategory = "Uncategorised"
+    let currentSectionType: "pizza" | "solo_meal" | "simple" | null = null
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row || row.length === 0) continue
+
+      const colA = row[0]?.toString().trim()
+      const colB = row[1]?.toString().trim()
+
+      // Detect category header row — col A is empty/category name, col B is empty or section title
+      // These are rows like "Pizzas", "Wraps", "Garlic Breads" etc (single cell spanning header)
+      if (colB === "" || colB === undefined) {
+        if (colA && colA.length > 0 && colA !== "Product No." && isNaN(Number(colA)) && !colA.startsWith("£")) {
+          currentCategory = colA
+          currentSectionType = null
+        }
+        continue
+      }
+
+      // Detect the "Product No. / Name / Description / ..." header row for this section
+      if (colA?.toLowerCase().includes("product") || colA?.toLowerCase() === "product no.") {
+        const sType = detectSectionType(row)
+        if (sType) currentSectionType = sType
+        continue
+      }
+
+      // Skip rows where col A is not a number (sub-headers, blank separators, average rows)
+      const rowNum = parseFloat(colA)
+      if (isNaN(rowNum) && !colA?.startsWith("£")) continue
+
+      // col B must be a real item name (not empty, not a number, not a £ value)
+      if (!colB || colB.length === 0) continue
+      const nameIsNumeric = !isNaN(Number(colB)) || colB.startsWith("£")
+      if (nameIsNumeric) continue
+
+      let costPrice: string | null = null
+      let priceHP: string | null = null
+      let priceGA: string | null = null
+
+      if (currentSectionType === "pizza") {
+        // Col E (idx 4) = 12" Pizza Cost (primary cost for pizzas)
+        // Col H (idx 7) = 12" Hyde Park Price
+        // Col N (idx 13) = 12" Grand Arcade Price
+        costPrice = parsePrice(row[4]) ?? parsePrice(row[3]) // 12" cost, fallback to 8" cost
+        priceHP = parsePrice(row[7])
+        priceGA = parsePrice(row[13])
+      } else if (currentSectionType === "solo_meal") {
+        // Col D (idx 3) = Solo Cost
+        // Col F (idx 5) = HP Solo Price
+        // Col R (idx 17) = GA Solo Price
+        costPrice = parsePrice(row[3]) // Solo Cost
+        priceHP = parsePrice(row[5])   // HP Solo Price
+        priceGA = parsePrice(row[17])  // GA Solo Price
+      } else {
+        // simple: Col D (idx 3) = Cost Price, Col E (idx 4) = HP Price, Col K (idx 10) = GA Price
+        costPrice = parsePrice(row[3])
+        priceHP = parsePrice(row[4])
+        priceGA = parsePrice(row[10])
+      }
+
+      // Skip rows with no name
+      if (!colB || colB === "-") continue
+
+      itemsToInsert.push({
+        itemName: colB,
+        costPrice,
+        sellingPriceHydePark: priceHP,
+        sellingPriceGrandArcade: priceGA,
+        category: currentCategory,
+        itemType: currentSectionType,
+        lastSyncedAt: new Date(),
+      })
+    }
 
     // Clear existing items and re-insert
     await db.delete(menuItems)
 
-    const itemsToInsert = items.map((row: string[]) => ({
-      itemName: row[resolvedNameIdx]?.toString().trim() || "",
-      costPrice: costIdx >= 0 && row[costIdx]
-        ? (parseFloat(row[costIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
-        : null,
-      sellingPriceHydePark: priceHPIdx >= 0 && row[priceHPIdx]
-        ? (parseFloat(row[priceHPIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
-        : genericPriceIdx >= 0 && row[genericPriceIdx]
-        ? (parseFloat(row[genericPriceIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
-        : null,
-      sellingPriceGrandArcade: priceGAIdx >= 0 && row[priceGAIdx]
-        ? (parseFloat(row[priceGAIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
-        : genericPriceIdx >= 0 && row[genericPriceIdx]
-        ? (parseFloat(row[genericPriceIdx].toString().replace(/[£,$,€]/g, "")) || null)?.toString() ?? null
-        : null,
-      category: catIdx >= 0 ? row[catIdx]?.toString().trim() || null : null,
-      itemType: typeIdx >= 0 ? row[typeIdx]?.toString().trim() || null : null,
-      lastSyncedAt: new Date(),
-    }))
-
     if (itemsToInsert.length > 0) {
-      await db.insert(menuItems).values(itemsToInsert)
+      // Insert in batches of 100
+      for (let i = 0; i < itemsToInsert.length; i += 100) {
+        await db.insert(menuItems).values(itemsToInsert.slice(i, i + 100))
+      }
     }
 
     await db.insert(syncLogs).values({
@@ -309,7 +367,7 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
       totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${menuItems.costPrice}::numeric, 0)), 0)`,
     })
     .from(orderItems)
-    .leftJoin(menuItems, eq(orderItems.itemName, menuItems.itemName))
+    .leftJoin(menuItems, sql`LOWER(TRIM(${orderItems.itemName})) = LOWER(TRIM(${menuItems.itemName}))`)
     .where(and(
       sql`${orderItems.date}::date >= ${startDate}::date`,
       sql`${orderItems.date}::date <= ${endDate}::date`,
@@ -342,7 +400,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
       totalDiscount: sql<number>`COALESCE(SUM(${orderItems.discount}::numeric), 0)`,
     })
     .from(orderItems)
-    .leftJoin(menuItems, eq(orderItems.itemName, menuItems.itemName))
+    .leftJoin(menuItems, sql`LOWER(TRIM(${orderItems.itemName})) = LOWER(TRIM(${menuItems.itemName}))`)
     .where(and(...conditions))
     .groupBy(orderItems.itemName, orderItems.categoryName, orderItems.itemType, menuItems.category, menuItems.itemType)
     .orderBy(desc(sql`SUM(${orderItems.amount}::numeric)`))
@@ -366,7 +424,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
       marginPercent: sql<number>`CASE WHEN SUM(${orderItems.amount}::numeric) > 0 THEN ROUND((SUM(${orderItems.amount}::numeric) - SUM(${orderItems.qty}::numeric * COALESCE(${menuItems.costPrice}::numeric, 0))) / SUM(${orderItems.amount}::numeric) * 100, 2) ELSE 0 END`,
     })
     .from(orderItems)
-    .leftJoin(menuItems, eq(orderItems.itemName, menuItems.itemName))
+    .leftJoin(menuItems, sql`LOWER(TRIM(${orderItems.itemName})) = LOWER(TRIM(${menuItems.itemName}))`)
     .where(and(...conditions))
     .groupBy(sql`COALESCE(${orderItems.categoryName}, ${menuItems.category}, 'Uncategorised')`)
     .orderBy(desc(sql`SUM(${orderItems.amount}::numeric)`))
