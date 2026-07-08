@@ -35,7 +35,7 @@ const chartConfig = {
 
 export default function CostingPage() {
   const [filters, setFilters] = useState({
-    startDate: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+    startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
   })
@@ -65,22 +65,55 @@ export default function CostingPage() {
     fetchData(f)
   }
 
-  const filtered = items.filter((i) =>
+  // The action groups by (itemName, categoryName, itemType), so one real item shows
+  // up as several rows when the POS labels it under different category spellings
+  // ("BURGERS" vs "CLASSIC BURGERS", "PERI PERI" vs "PIRI PIRI") or with stray
+  // leading/trailing spaces (" Meal " vs "Meal "). Collapse to one row per trimmed
+  // item name so each item appears once with its true totals.
+  const aggItems: (ItemRow & { categories: string[] })[] = (() => {
+    const m = new Map<string, ItemRow & { categories: string[] }>()
+    for (const r of items) {
+      const key = (r.itemName ?? "").trim()
+      const ex = m.get(key)
+      const cat = r.categoryName?.trim()
+      if (!ex) {
+        m.set(key, { ...r, itemName: key, categories: cat ? [cat] : [] })
+      } else {
+        ex.totalQty = Number(ex.totalQty) + Number(r.totalQty)
+        ex.totalRevenue = Number(ex.totalRevenue) + Number(r.totalRevenue)
+        ex.totalCost = Number(ex.totalCost) + Number(r.totalCost)
+        ex.grossProfit = Number(ex.grossProfit) + Number(r.grossProfit)
+        ex.totalDiscount = Number(ex.totalDiscount) + Number(r.totalDiscount)
+        if (cat && !ex.categories.includes(cat)) ex.categories.push(cat)
+      }
+    }
+    const out = [...m.values()]
+    for (const a of out) {
+      const qty = Number(a.totalQty), rev = Number(a.totalRevenue), cost = Number(a.totalCost)
+      a.costPrice = qty > 0 ? cost / qty : 0          // effective blended unit cost
+      a.avgUnitPrice = qty > 0 ? rev / qty : 0        // revenue-weighted avg price
+      a.marginPercent = rev > 0 ? (a.grossProfit / rev) * 100 : 0
+      a.categoryName = a.categories[0] ?? ""
+    }
+    return out.sort((a, b) => Number(b.totalRevenue) - Number(a.totalRevenue))
+  })()
+
+  const filtered = aggItems.filter((i) =>
     i.itemName.toLowerCase().includes(search.toLowerCase()) ||
-    i.categoryName?.toLowerCase().includes(search.toLowerCase())
+    i.categories.some((c) => c.toLowerCase().includes(search.toLowerCase()))
   )
 
-  const totalRevenue = items.reduce((s, i) => s + Number(i.totalRevenue), 0)
-  const totalProfit = items.reduce((s, i) => s + Number(i.grossProfit), 0)
-  const totalCost = items.reduce((s, i) => s + Number(i.totalCost), 0)
+  const totalRevenue = aggItems.reduce((s, i) => s + Number(i.totalRevenue), 0)
+  const totalProfit = aggItems.reduce((s, i) => s + Number(i.grossProfit), 0)
+  const totalCost = aggItems.reduce((s, i) => s + Number(i.totalCost), 0)
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   const marginColor = (m: number) =>
     m >= 60 ? "text-[oklch(0.7_0.15_150)]" : m >= 40 ? "text-[oklch(0.75_0.18_75)]" : "text-destructive"
 
-  const top10ByProfit = [...items].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)
-  const top10ByMargin = [...items].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)
-  const bottom10 = [...items].filter(i => Number(i.totalQty) > 5).sort((a, b) => Number(a.marginPercent) - Number(b.marginPercent)).slice(0, 10)
+  const top10ByProfit = [...aggItems].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)
+  const top10ByMargin = [...aggItems].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)
+  const bottom10 = [...aggItems].filter(i => Number(i.totalQty) > 5).sort((a, b) => Number(a.marginPercent) - Number(b.marginPercent)).slice(0, 10)
 
   return (
     <div className="flex flex-col gap-6">
@@ -164,6 +197,11 @@ export default function CostingPage() {
                         <TableCell className="text-xs font-medium">{item.itemName}</TableCell>
                         <TableCell className="text-xs">
                           <Badge variant="outline" className="text-[10px]">{item.categoryName || "—"}</Badge>
+                          {item.categories.length > 1 && (
+                            <span className="ml-1 text-[10px] text-muted-foreground" title={item.categories.join(", ")}>
+                              +{item.categories.length - 1}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-xs text-right">{Number(item.totalQty).toFixed(0)}</TableCell>
                         <TableCell className="text-xs text-right">
@@ -198,15 +236,20 @@ export default function CostingPage() {
         <TabsContent value="category" className="mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 text-center">
                 <CardTitle className="text-sm font-semibold">Profit by Category</CardTitle>
+                <CardDescription className="text-xs">Top 10 categories by gross profit</CardDescription>
               </CardHeader>
               <CardContent>
-                {loading ? <Skeleton className="h-48 w-full" /> : (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
-                    <BarChart data={categories as Record<string, unknown>[]} layout="vertical">
+                {loading ? <Skeleton className="h-64 w-full" /> : (
+                  <ChartContainer config={chartConfig} className="h-64 w-full">
+                    <BarChart
+                      data={[...(categories as Record<string, unknown>[])].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)}
+                      layout="vertical"
+                      margin={{ left: 8, right: 8 }}
+                    >
                       <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
-                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={90} />
+                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="grossProfit" fill="var(--color-chart-3)" radius={4} name="Gross Profit" />
                     </BarChart>
@@ -215,18 +258,23 @@ export default function CostingPage() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 text-center">
                 <CardTitle className="text-sm font-semibold">Margin % by Category</CardTitle>
+                <CardDescription className="text-xs">Top 10 categories by margin</CardDescription>
               </CardHeader>
               <CardContent>
-                {loading ? <Skeleton className="h-48 w-full" /> : (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
-                    <BarChart data={categories as Record<string, unknown>[]} layout="vertical">
+                {loading ? <Skeleton className="h-64 w-full" /> : (
+                  <ChartContainer config={chartConfig} className="h-64 w-full">
+                    <BarChart
+                      data={[...(categories as Record<string, unknown>[])].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)}
+                      layout="vertical"
+                      margin={{ left: 8, right: 8 }}
+                    >
                       <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={90} />
+                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="marginPercent" radius={4} name="Margin %">
-                        {(categories as Record<string, unknown>[]).map((c, i) => (
+                        {[...(categories as Record<string, unknown>[])].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10).map((c, i) => (
                           <Cell key={i} fill={Number(c.marginPercent) >= 60 ? "var(--color-chart-3)" : Number(c.marginPercent) >= 40 ? "var(--color-chart-5)" : "var(--color-destructive)"} />
                         ))}
                       </Bar>
@@ -242,7 +290,7 @@ export default function CostingPage() {
         <TabsContent value="top" className="mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 text-center">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <TrendingUp className="size-4 text-[oklch(0.7_0.15_150)]" />
                   Top 10 by Gross Profit
@@ -267,7 +315,7 @@ export default function CostingPage() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 text-center">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <TrendingUp className="size-4 text-primary" />
                   Top 10 by Margin %
@@ -297,7 +345,7 @@ export default function CostingPage() {
         {/* At Risk */}
         <TabsContent value="risk" className="mt-4">
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 text-center">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <TrendingDown className="size-4 text-destructive" />
                 At Risk Items — Low Margin (&lt;40%) with Sales Volume
