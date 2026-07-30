@@ -410,55 +410,92 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
 export async function syncShipdayData(startDate: string, endDate: string) {
   try {
     const allOrders: Record<string, unknown>[] = []
-    let page = 1
-    const MAX_PAGES = 400 // up to 10 000 orders
+    const MAX_PAGES = 400 // per window: up to 10 000 orders
 
-    // Shipday uses startTime/endTime (ISO) + integer startCursor/endCursor pagination
-    const startTime = `${startDate}T00:00:00Z`
-    const endTime   = `${endDate}T23:59:59Z`
+    // Shipday's /orders/query silently caps each request to roughly the most recent
+    // month, so asking for a wide range (e.g. 2 months) only returns the latest ~30
+    // days. To get full history we split [startDate, endDate] into short windows and
+    // query each one separately, then combine. 14-day windows stay safely under the
+    // cap while keeping the number of (rate-limited) requests reasonable.
+    const WINDOW_DAYS = 14
+    const addDays = (isoDate: string, days: number) => {
+      const d = new Date(`${isoDate}T00:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + days)
+      return d.toISOString().slice(0, 10) // yyyy-MM-dd
+    }
 
     // Shipday rate limit is 5 requests / minute → minimum 12 s between request STARTS.
+    // We keep a slightly larger margin than the theoretical 12 s so timing jitter (or
+    // another caller briefly sharing the account limit) can't push us over 5/min.
     // We pace against the start of the previous request (not after processing) so the
     // JSON-parse + array work overlaps the wait window instead of being added on top.
-    const MIN_GAP_MS = 12_500
+    const MIN_GAP_MS = 13_500
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
     let lastRequestStart = 0
 
-    while (page <= MAX_PAGES) {
-      const sinceLast = Date.now() - lastRequestStart
-      if (lastRequestStart > 0 && sinceLast < MIN_GAP_MS) {
-        await new Promise((r) => setTimeout(r, MIN_GAP_MS - sinceLast))
+    // Fetch one page of one window, transparently retrying if Shipday still throttles
+    // us. On a rate-limit response we back off ~60 s (a full window) and try the SAME
+    // page again rather than aborting the whole sync — that is what previously left the
+    // data incomplete: a single 400 killed pagination partway through.
+    const MAX_RATE_RETRIES = 4
+    async function fetchPage(startTime: string, endTime: string, startCursor: number, endCursor: number) {
+      for (let attempt = 0; ; attempt++) {
+        const sinceLast = Date.now() - lastRequestStart
+        if (lastRequestStart > 0 && sinceLast < MIN_GAP_MS) {
+          await sleep(MIN_GAP_MS - sinceLast)
+        }
+        lastRequestStart = Date.now()
+
+        const res = await fetch("https://api.shipday.com/orders/query", {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${process.env.SHIPDAY_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderStatus: "ALREADY_DELIVERED",
+            startTime,
+            endTime,
+            startCursor,
+            endCursor,
+          }),
+        })
+
+        if (res.ok) return await res.json()
+
+        const body = await res.text()
+        const throttled = res.status === 429 || /rate limit/i.test(body)
+        if (throttled && attempt < MAX_RATE_RETRIES) {
+          await sleep(60_000) // wait out a full rate-limit window, then retry same page
+          continue
+        }
+        throw new Error(`Shipday API error: ${res.status} ${body}`)
       }
-      lastRequestStart = Date.now()
+    }
 
-      const startCursor = (page - 1) * 25 + 1
-      const endCursor   = startCursor + 24
+    // Walk the requested range window-by-window (oldest → newest), paginating each.
+    for (let winStart = startDate; winStart <= endDate; winStart = addDays(winStart, WINDOW_DAYS)) {
+      let winEnd = addDays(winStart, WINDOW_DAYS - 1)
+      if (winEnd > endDate) winEnd = endDate
+      const startTime = `${winStart}T00:00:00Z`
+      const endTime   = `${winEnd}T23:59:59Z`
 
-      const res = await fetch("https://api.shipday.com/orders/query", {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${process.env.SHIPDAY_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderStatus: "ALREADY_DELIVERED",
-          startTime,
-          endTime,
-          startCursor,
-          endCursor,
-        }),
-      })
+      let page = 1
+      while (page <= MAX_PAGES) {
+        const startCursor = (page - 1) * 25 + 1
+        const endCursor   = startCursor + 24
 
-      if (!res.ok) throw new Error(`Shipday API error: ${res.status} ${await res.text()}`)
-      const data = await res.json()
+        const data = await fetchPage(startTime, endTime, startCursor, endCursor)
 
-      const pageOrders: Record<string, unknown>[] = Array.isArray(data) ? data : []
-      if (pageOrders.length === 0) break
+        const pageOrders: Record<string, unknown>[] = Array.isArray(data) ? data : []
+        if (pageOrders.length === 0) break
 
-      allOrders.push(...pageOrders)
-      page++
+        allOrders.push(...pageOrders)
+        page++
 
-      // Fewer than 25 results means last page — stop without burning another wait
-      if (pageOrders.length < 25) break
+        // Fewer than 25 results means last page of this window — stop without burning another wait
+        if (pageOrders.length < 25) break
+      }
     }
 
     type DeliveryRow = typeof deliveries.$inferInsert
@@ -513,7 +550,7 @@ export async function syncShipdayData(startDate: string, endDate: string) {
 
     await db.insert(syncLogs).values({ source: "shipday", status: "success", recordsProcessed: rows.length })
     revalidatePath("/dashboard")
-    return { success: true, count: rows.length, pages: page - 1 }
+    return { success: true, count: rows.length }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error"
     await db.insert(syncLogs).values({ source: "shipday", status: "error", errorMessage: msg })
