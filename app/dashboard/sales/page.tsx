@@ -60,6 +60,7 @@ export default function SalesPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
   })
   const [items, setItems] = useState<ItemRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,7 +71,7 @@ export default function SalesPage() {
   const fetchData = async (f: typeof filters) => {
     setLoading(true)
     try {
-      setItems(await getItemProfitability(f.startDate, f.endDate, f.location) as ItemRow[])
+      setItems(await getItemProfitability(f.startDate, f.endDate, f.location, f.channel) as ItemRow[])
     } finally {
       setLoading(false)
     }

@@ -8,6 +8,25 @@ import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm"
 const dateGte = (col: any, d: string) => sql`${col}::date >= ${d}::date`
 const dateLte = (col: any, d: string) => sql`${col}::date <= ${d}::date`
 
+// ─── Sales-channel bucket filter ─────────────────────────────────────────────
+// Splits orders into three buckets by orderChannel (every order/line carries one):
+//   • instore   → "wix"   (in-house EPOS: walk-in, dine-in, phone)
+//   • website   → "eatpresto" (own online-ordering storefront)
+//   • platforms → uber eats / deliveroo / just eat (third-party delivery apps)
+// "all" (or undefined) applies no filter. Works for both query styles: pass a Drizzle
+// column (orders.orderChannel) OR a raw sql expression (sql`oi."orderChannel"`).
+const CHANNEL_MAP: Record<string, string[]> = {
+  instore: ["wix"],
+  website: ["eatpresto"],
+  platforms: ["ubereats", "deliveroo", "justeat"],
+}
+function channelCondition(channelCol: any, channel?: string | null) {
+  if (!channel || channel === "all") return undefined
+  const vals = CHANNEL_MAP[channel]
+  if (!vals || vals.length === 0) return undefined
+  return sql`LOWER(${channelCol}) IN (${sql.join(vals.map((v) => sql`${v}`), sql`, `)})`
+}
+
 // ─── Reviewed-cost resolution (normalisation layer) ──────────────────────────
 // Reports cost POS lines through the human-reviewed item_alias → dim_costing_item
 // mapping, NOT the legacy menu_items.costPrice exact-name join (which misses the
@@ -605,13 +624,15 @@ export async function clearSyncData(scope: "orders" | "deliveries" | "all") {
 }
 
 // ─── Dashboard Data Fetchers ──────────────────────────────────────────────
-export async function getOverviewKPIs(startDate: string, endDate: string, location?: string) {
+export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string) {
   const orderDateFilter = [
     sql`${orders.date}::date >= ${startDate}::date`,
     sql`${orders.date}::date <= ${endDate}::date`,
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
+  const ordCh = channelCondition(orders.orderChannel, channel)
+  if (ordCh) orderDateFilter.push(ordCh as any)
 
   const itemConditions: any[] = [
     sql`${orderItems.date}::date >= ${startDate}::date`,
@@ -620,6 +641,8 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
+  const itemCh = channelCondition(orderItems.orderChannel, channel)
+  if (itemCh) itemConditions.push(itemCh)
 
   // Run both aggregates in parallel — independent queries, no reason to await serially
   const cl = costLookup()
@@ -646,7 +669,7 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
   return { ...result[0], ...itemResult[0] }
 }
 
-export async function getItemProfitability(startDate: string, endDate: string, location?: string) {
+export async function getItemProfitability(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -656,6 +679,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  { const cc = channelCondition(orderItems.orderChannel, channel); if (cc) conditions.push(cc) }
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -682,7 +706,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
     .orderBy(desc(sql`SUM(${orderItems.amount}::numeric)`))
 }
 
-export async function getCategoryPerformance(startDate: string, endDate: string, location?: string) {
+export async function getCategoryPerformance(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -690,6 +714,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  { const cc = channelCondition(orderItems.orderChannel, channel); if (cc) conditions.push(cc) }
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -711,8 +736,10 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
 }
 
 // Top items per platform (order channel) — for the per-platform sales bar charts.
-export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8) {
+export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8, channel?: string) {
   const locSql = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const chCond = channelCondition(sql`oi."orderChannel"`, channel)
+  const chSql = chCond ? sql` AND ${chCond}` : sql``
   const raw = await db.execute<{ platform: string; itemName: string; revenue: string; qty: string }>(sql`
     SELECT platform, "itemName", revenue, qty FROM (
       SELECT COALESCE(oi."orderChannel", oi.mode, 'Unknown') AS platform,
@@ -723,7 +750,7 @@ export async function getTopItemsByPlatform(startDate: string, endDate: string, 
       FROM order_items oi
       WHERE oi.date::date >= ${startDate}::date AND oi.date::date <= ${endDate}::date
         AND oi.cancelled = false AND oi.amount::numeric > 0
-        ${locSql}
+        ${locSql}${chSql}
       GROUP BY COALESCE(oi."orderChannel", oi.mode, 'Unknown'), oi."itemName"
     ) z
     WHERE rn <= ${perPlatform}
@@ -740,9 +767,10 @@ export async function getTopItemsByPlatform(startDate: string, endDate: string, 
     .sort((a, b) => b.total - a.total)
 }
 
-export async function getPlatformPerformance(startDate: string, endDate: string, location?: string) {
+export async function getPlatformPerformance(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   return db
     .select({
@@ -759,9 +787,10 @@ export async function getPlatformPerformance(startDate: string, endDate: string,
     .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
-export async function getHourlyDemand(startDate: string, endDate: string, location?: string) {
+export async function getHourlyDemand(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   return db
     .select({
@@ -969,13 +998,14 @@ export async function getMenuItems() {
   return db.select().from(menuItems).orderBy(menuItems.itemName)
 }
 
-export async function getOfferAnalysis(startDate: string, endDate: string, location?: string) {
+export async function getOfferAnalysis(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   const discountedOrders = await db
     .select({
@@ -1119,13 +1149,14 @@ export async function getWebCustomerItemsBySegment(startDate: string, endDate: s
   return { newCustomers: bySeg("New"), returning: bySeg("Returning"), regular: bySeg("Regular") }
 }
 
-export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string) {
+export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   // Daily totals + day-of-week breakdown are independent — run them together
   const [daily, dowBreakdown] = await Promise.all([
@@ -1158,7 +1189,7 @@ export async function getHourlyDemandHeatmap(startDate: string, endDate: string,
   return { daily, dowBreakdown }
 }
 
-export async function getHourlyBreakdown(startDate: string, endDate: string, location?: string | null, dayOfWeek?: number | null) {
+export async function getHourlyBreakdown(startDate: string, endDate: string, location?: string | null, dayOfWeek?: number | null, channel?: string) {
   // Use orders.orderTime (Presto timestamp) — falls back to Shipday if not yet populated
   const conditions: any[] = [
     dateGte(orders.date, startDate),
@@ -1167,6 +1198,7 @@ export async function getHourlyBreakdown(startDate: string, endDate: string, loc
     sql`${orders.orderTime} IS NOT NULL`,
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
   // orderTime is stored as UTC wall-clock — convert to UK local (Europe/London, GMT/BST)
   // before extracting the hour/day, otherwise during BST every order reads an hour early
   // and the chart shows trade before the shop opens (GA 10:30, HP 11:00).
@@ -1188,7 +1220,7 @@ export async function getHourlyBreakdown(startDate: string, endDate: string, loc
 }
 
 // Revenue heatmap: day-of-week × hour (UK local time) for staffing/offer timing.
-export async function getRevenueHeatmap(startDate: string, endDate: string, location?: string) {
+export async function getRevenueHeatmap(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
@@ -1196,6 +1228,7 @@ export async function getRevenueHeatmap(startDate: string, endDate: string, loca
     sql`${orders.orderTime} IS NOT NULL`,
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   return db
     .select({
@@ -1212,13 +1245,14 @@ export async function getRevenueHeatmap(startDate: string, endDate: string, loca
     )
 }
 
-export async function getModeBreakdown(startDate: string, endDate: string, location?: string) {
+export async function getModeBreakdown(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   return db
     .select({
@@ -1234,9 +1268,10 @@ export async function getModeBreakdown(startDate: string, endDate: string, locat
     .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
-export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string) {
+export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string, channel?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  { const cc = channelCondition(orders.orderChannel, channel); if (cc) conditions.push(cc) }
 
   // Group by date only (one row per day). Per-location revenue is added via
   // conditional sums so a single point carries both stores' trends for comparison.
@@ -1256,9 +1291,11 @@ export async function getDailyRevenueTrend(startDate: string, endDate: string, l
 }
 
 // Order line structure validation — surfaces malformed/orphan rows in the basket data.
-export async function getOrderLineValidation(startDate: string, endDate: string, location?: string) {
-  const oiLoc = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
-  const oLoc = location && location !== "all" ? sql` AND o.location = ${location}` : sql``
+export async function getOrderLineValidation(startDate: string, endDate: string, location?: string, channel?: string) {
+  const oiChC = channelCondition(sql`oi."orderChannel"`, channel)
+  const oChC = channelCondition(sql`o."orderChannel"`, channel)
+  const oiLoc = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${oiChC ? sql` AND ${oiChC}` : sql``}`
+  const oLoc = sql`${location && location !== "all" ? sql` AND o.location = ${location}` : sql``}${oChC ? sql` AND ${oChC}` : sql``}`
 
   const raw = await db.execute<Record<string, string>>(sql`
     SELECT
@@ -1315,9 +1352,10 @@ export async function getOrderLineValidation(startDate: string, endDate: string,
   }
 }
 
-export async function getBasketAnalysis(startDate: string, endDate: string, location?: string) {
+export async function getBasketAnalysis(startDate: string, endDate: string, location?: string, channel?: string) {
   // Raw SQL for subquery-based aggregations — Drizzle conditions can't be interpolated into FROM subqueries
-  const locFilter = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const chCond = channelCondition(sql`oi."orderChannel"`, channel)
+  const locFilter = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${chCond ? sql` AND ${chCond}` : sql``}`
   // Keep only real sellable products — drop modifier lines (dips/options/etc) and meal-upgrade
   // add-ons so item lists, counts and the distribution reflect actual basket contents.
   const realProduct = sql.raw(`(${basketGroup(`oi."categoryName"`, `oi."itemName"`)}) <> 'Modifier' AND NOT ${mealBundleSql(`oi."itemName"`)}`)
@@ -1330,6 +1368,7 @@ export async function getBasketAnalysis(startDate: string, endDate: string, loca
     sql`(${sql.raw(basketGroup(`order_items."categoryName"`, `order_items."itemName"`))}) <> 'Modifier' AND NOT ${sql.raw(mealBundleSql(`order_items."itemName"`))}`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  { const cc = channelCondition(orderItems.orderChannel, channel); if (cc) conditions.push(cc) }
 
   // All three are independent reads — fire them in parallel
   const [summaryRows, distRows, topItems] = await Promise.all([
@@ -1441,8 +1480,9 @@ const mealBundleSql = (nameCol: string) =>
 
 // Real market-basket analysis: item affinity (what's bought together), attach-rate of
 // add-ons onto mains (the upsell gap), and basket-value lift (the £ upside of upselling).
-export async function getBasketInsights(startDate: string, endDate: string, location?: string) {
-  const locFilter = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+export async function getBasketInsights(startDate: string, endDate: string, location?: string, channel?: string) {
+  const chCond = channelCondition(sql`oi."orderChannel"`, channel)
+  const locFilter = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${chCond ? sql` AND ${chCond}` : sql``}`
   const grp = sql.raw(basketGroup(`oi."categoryName"`, `oi."itemName"`))
   const meal = sql.raw(mealBundleSql(`oi."itemName"`))
 
@@ -1622,8 +1662,10 @@ export async function getOfferAnalytics(
   endDate: string,
   location?: string,
   offerName?: string | null,
+  channel?: string,
 ) {
-  const locSql = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const oiChC = channelCondition(sql`oi."orderChannel"`, channel)
+  const locSql = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${oiChC ? sql` AND ${oiChC}` : sql``}`
 
   // 1) List of all distinct offers in range (for the name slicer) + headline numbers
   const offerListRaw = await db.execute<{
@@ -1655,7 +1697,8 @@ export async function getOfferAnalytics(
   }))
 
   // 2) Baseline: overall AOV + overall margin % across all (non-offer-specific) orders in range
-  const orderLoc = location && location !== "all" ? sql` AND o.location = ${location}` : sql``
+  const oChC = channelCondition(sql`o."orderChannel"`, channel)
+  const orderLoc = sql`${location && location !== "all" ? sql` AND o.location = ${location}` : sql``}${oChC ? sql` AND ${oChC}` : sql``}`
   const baseRaw = await db.execute<{ total_orders: string; aov: string; revenue: string }>(sql`
     SELECT COUNT(*) AS total_orders,
            COALESCE(AVG(o."totalAmount"::numeric), 0) AS aov,

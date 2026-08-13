@@ -60,6 +60,7 @@ export default function RecommendationsPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
   })
   const [hourly, setHourly] = useState<{ hour: number; totalOrders: number; totalRevenue: number; avgOrderValue: number }[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -70,9 +71,9 @@ export default function RecommendationsPage() {
     setLoading(true)
     try {
       const [h, i, b] = await Promise.all([
-        getHourlyBreakdown(f.startDate, f.endDate, f.location),
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getBasketAnalysis(f.startDate, f.endDate, f.location),
+        getHourlyBreakdown(f.startDate, f.endDate, f.location, null, f.channel),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel),
       ])
       setHourly(h as any)
       setItems(i as Item[])

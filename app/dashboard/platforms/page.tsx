@@ -43,6 +43,7 @@ export default function PlatformsPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
   })
   const [platforms, setPlatforms] = useState<PlatformRow[]>([])
   const [topItems, setTopItems] = useState<Awaited<ReturnType<typeof getTopItemsByPlatform>>>([])
@@ -52,8 +53,8 @@ export default function PlatformsPage() {
     setLoading(true)
     try {
       const [p, t] = await Promise.all([
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
-        getTopItemsByPlatform(f.startDate, f.endDate, f.location),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel),
+        getTopItemsByPlatform(f.startDate, f.endDate, f.location, 8, f.channel),
       ])
       setPlatforms(p as PlatformRow[])
       setTopItems(t)

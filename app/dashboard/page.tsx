@@ -28,6 +28,7 @@ export default function DashboardPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
   })
   const [kpis, setKpis] = useState<Record<string, number> | null>(null)
   const [trend, setTrend] = useState<unknown[]>([])
@@ -41,12 +42,12 @@ export default function DashboardPage() {
     setLoading(true)
     try {
       const [k, t, p, c, h, it] = await Promise.all([
-        getOverviewKPIs(f.startDate, f.endDate, f.location),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
-        getCategoryPerformance(f.startDate, f.endDate, f.location),
-        getRevenueHeatmap(f.startDate, f.endDate, f.location),
-        getItemProfitability(f.startDate, f.endDate, f.location),
+        getOverviewKPIs(f.startDate, f.endDate, f.location, f.channel),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel),
+        getRevenueHeatmap(f.startDate, f.endDate, f.location, f.channel),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel),
       ])
       setKpis(k as Record<string, number>)
       setTrend(t)

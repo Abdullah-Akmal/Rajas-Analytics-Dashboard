@@ -86,7 +86,7 @@ export default function CustomersPage() {
         <p className="text-sm text-muted-foreground">Repeat &amp; new-customer analysis for identified website (Wix) customers</p>
       </div>
 
-      <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
+      <DateLocationFilter showChannel={false} onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
 
       {/* Data-coverage notice — customer identity only exists for own-website orders */}
       {!loading && coverage && (
