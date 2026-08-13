@@ -35,6 +35,8 @@ export default function BasketPage() {
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [data, setData] = useState<BasketData | null>(null)
   const [validation, setValidation] = useState<Validation | null>(null)
@@ -45,9 +47,9 @@ export default function BasketPage() {
     setLoading(true)
     try {
       const [b, v, ins] = await Promise.all([
-        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel),
-        getOrderLineValidation(f.startDate, f.endDate, f.location, f.channel),
-        getBasketInsights(f.startDate, f.endDate, f.location, f.channel),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getOrderLineValidation(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getBasketInsights(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
       setData(b)
       setValidation(v)

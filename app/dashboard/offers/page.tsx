@@ -31,6 +31,8 @@ export default function OffersPage() {
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [rows, setRows] = useState<OfferRow[]>([])
   const [platforms, setPlatforms] = useState<Awaited<ReturnType<typeof getPlatformPerformance>>>([])
@@ -40,8 +42,8 @@ export default function OffersPage() {
     setLoading(true)
     try {
       const [o, p] = await Promise.all([
-        getOfferAnalysis(f.startDate, f.endDate, f.location, f.channel),
-        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel),
+        getOfferAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
       setRows(o)
       setPlatforms(p)

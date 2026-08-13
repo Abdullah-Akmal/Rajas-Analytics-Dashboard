@@ -65,6 +65,8 @@ export default function DemandPage() {
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [daily, setDaily] = useState<DailyRow[]>([])
   const [dowBreakdown, setDowBreakdown] = useState<DowRow[]>([])
@@ -78,9 +80,9 @@ export default function DemandPage() {
     setLoading(true)
     try {
       const [h, m, hr] = await Promise.all([
-        getHourlyDemandHeatmap(f.startDate, f.endDate, f.location, f.channel),
-        getModeBreakdown(f.startDate, f.endDate, f.location, f.channel),
-        getHourlyBreakdown(f.startDate, f.endDate, f.location, selectedDay, f.channel),
+        getHourlyDemandHeatmap(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getModeBreakdown(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getHourlyBreakdown(f.startDate, f.endDate, f.location, selectedDay, f.channel, f.mode, f.platform),
       ])
       setDaily(h.daily as DailyRow[])
       setDowBreakdown(h.dowBreakdown as DowRow[])
@@ -94,7 +96,7 @@ export default function DemandPage() {
   const fetchHourly = async (day: number | null) => {
     setHourlyLoading(true)
     try {
-      const hr = await getHourlyBreakdown(filters.startDate, filters.endDate, filters.location, day, filters.channel)
+      const hr = await getHourlyBreakdown(filters.startDate, filters.endDate, filters.location, day, filters.channel, filters.mode, filters.platform)
       setHourly(hr as HourRow[])
     } finally {
       setHourlyLoading(false)

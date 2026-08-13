@@ -36,6 +36,8 @@ export default function OfferPerformancePage() {
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [offer, setOffer] = useState<string>("all")
   const [data, setData] = useState<Analytics | null>(null)
@@ -44,7 +46,7 @@ export default function OfferPerformancePage() {
   const fetchData = async (f: typeof filters, off: string) => {
     setLoading(true)
     try {
-      setData(await getOfferAnalytics(f.startDate, f.endDate, f.location, off, f.channel))
+      setData(await getOfferAnalytics(f.startDate, f.endDate, f.location, off, f.channel, f.mode, f.platform))
     } finally {
       setLoading(false)
     }
