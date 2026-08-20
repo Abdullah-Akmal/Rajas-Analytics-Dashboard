@@ -1702,6 +1702,70 @@ export async function getForecastData(location?: string) {
   return { dowStats, recentTrend }
 }
 
+// ─── Offer catalogue: which offers are currently available ───────────────────
+// Presto's sales API (api.sales.prestoexpress.co.uk) exposes reports only — there is
+// no menu/catalogue endpoint to ask "what offers are live right now". The offer list
+// therefore comes from the sold items themselves: every order_items row whose
+// categoryName matches OFFERS ("OFFERS", "BUY 1 GET 1 FREE OFFER", …) is an offer
+// redemption, and the trimmed itemName is the offer name.
+//
+// An offer counts as CURRENTLY AVAILABLE when it was still being redeemed within
+// OFFER_ACTIVE_WINDOW_DAYS of the most recent synced sales date. Recency is measured
+// against the latest data date rather than today's clock, so a lagging sync doesn't
+// wrongly retire every offer — the returned `asOf` says which date it was judged on.
+// This is deliberately scanned over ALL history, not the dashboard's date filter, so
+// a live offer still shows up when you're looking at a period it wasn't used in.
+const OFFER_ACTIVE_WINDOW_DAYS = 14
+
+export async function getAvailableOffers(location?: string, channel?: string, mode?: string, platform?: string) {
+  const locSql = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
+
+  const raw = await db.execute<{
+    offer: string; orders: string; units: string; revenue: string
+    first_seen: string; last_seen: string; days_since: string; as_of: string
+  }>(sql`
+    WITH latest AS (SELECT MAX(date) AS d FROM order_items)
+    SELECT TRIM(oi."itemName")                     AS offer,
+           COUNT(DISTINCT oi."orderId")            AS orders,
+           COALESCE(SUM(oi.qty::numeric), 0)       AS units,
+           COALESCE(SUM(oi.amount::numeric), 0)    AS revenue,
+           MIN(oi.date)::text                      AS first_seen,
+           MAX(oi.date)::text                      AS last_seen,
+           ((SELECT d FROM latest) - MAX(oi.date)) AS days_since,
+           (SELECT d FROM latest)::text            AS as_of
+    FROM order_items oi
+    WHERE oi."categoryName" ILIKE '%offer%'
+      AND oi.cancelled = false
+      -- Stray POS line mis-filed under Offers; not a real promotion, exclude it.
+      AND LOWER(TRIM(oi."itemName")) <> 'zinger burger solo'
+      ${locSql}
+    GROUP BY TRIM(oi."itemName")
+    ORDER BY MAX(oi.date) DESC, COUNT(DISTINCT oi."orderId") DESC
+  `)
+
+  const rows = ((raw as any).rows ?? raw) as any[]
+  const offers = rows.map((r) => {
+    const daysSince = Number(r.days_since ?? 0)
+    return {
+      offer: r.offer as string,
+      orders: Number(r.orders),
+      units: Number(r.units),
+      revenue: Number(r.revenue),
+      firstSeen: r.first_seen as string,
+      lastSeen: r.last_seen as string,
+      daysSince,
+      available: daysSince <= OFFER_ACTIVE_WINDOW_DAYS,
+    }
+  })
+
+  return {
+    asOf: (rows[0]?.as_of as string) ?? null,
+    windowDays: OFFER_ACTIVE_WINDOW_DAYS,
+    offers,
+    availableCount: offers.filter((o) => o.available).length,
+  }
+}
+
 // ─── Offer Performance Tracking ───────────────────────────────────────────
 // Offers come from Presto as order_items rows where categoryName = 'OFFERS'.
 // The (trimmed) itemName is the offer name. Multiple offers are supported.
