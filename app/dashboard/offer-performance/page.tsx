@@ -109,9 +109,14 @@ export default function OfferPerformancePage() {
         <CardContent>
           {loading ? (
             <div className="flex gap-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-56" />)}</div>
+          ) : offerList.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              No offers have ever been recorded here — this location has never booked an item in the “OFFERS” category.
+            </p>
           ) : liveOffers.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">
-              No offers have been redeemed in the last {catalogue?.windowDays ?? 14} days of synced sales — every known offer looks retired.
+              {offerList.length} offer{offerList.length === 1 ? " has" : "s have"} run here, but none in the last {catalogue?.windowDays ?? 14} days
+              of synced sales — they all look retired. Most recent: {offerList[0].offer} ({offerList[0].lastSeen}).
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
