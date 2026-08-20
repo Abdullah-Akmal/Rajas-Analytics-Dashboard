@@ -93,7 +93,7 @@ export default function DeliveryPage() {
         <p className="text-sm text-muted-foreground">Area performance, delivery efficiency, radius, profitability and bottlenecks — from Shipday</p>
       </div>
 
-      <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
+      <DateLocationFilter showChannel={false} onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
 
       {/* ── KEPT KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

@@ -8,6 +8,80 @@ import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm"
 const dateGte = (col: any, d: string) => sql`${col}::date >= ${d}::date`
 const dateLte = (col: any, d: string) => sql`${col}::date <= ${d}::date`
 
+// ─── Sales-channel bucket filter ─────────────────────────────────────────────
+// Splits orders into three buckets by orderChannel (every order/line carries one):
+//   • instore   → "wix"   (in-house EPOS: walk-in, dine-in, phone)
+//   • website   → "eatpresto" (own online-ordering storefront)
+//   • platforms → uber eats / deliveroo / just eat (third-party delivery apps)
+// "all" (or undefined) applies no filter. Works for both query styles: pass a Drizzle
+// column (orders.orderChannel) OR a raw sql expression (sql`oi."orderChannel"`).
+const CHANNEL_MAP: Record<string, string[]> = {
+  instore: ["wix"],
+  website: ["eatpresto"],
+  platforms: ["ubereats", "deliveroo", "justeat"],
+}
+function channelCondition(channelCol: any, channel?: string | null) {
+  if (!channel || channel === "all") return undefined
+  const vals = CHANNEL_MAP[channel]
+  if (!vals || vals.length === 0) return undefined
+  return sql`LOWER(${channelCol}) IN (${sql.join(vals.map((v) => sql`${v}`), sql`, `)})`
+}
+
+// ─── Fulfilment-mode and order-platform filters ──────────────────────────────
+// mode     — how the order is fulfilled: walk_in / collection / delivery / dine_in
+// platform — where it was taken: "walk in" / phone / online (Presto also offers
+//            kiosk + future table, but no such rows exist in this data yet)
+// Both are compared case-insensitively with spaces normalised to underscores, so
+// the stored "walk in" (platform) and "walk_in" (mode) both match a `walk_in` key.
+const slug = (col: any) => sql`LOWER(REPLACE(TRIM(${col}), ' ', '_'))`
+function modeCondition(modeCol: any, mode?: string | null) {
+  if (!mode || mode === "all") return undefined
+  return sql`${slug(modeCol)} = ${mode}`
+}
+function platformCondition(platformCol: any, platform?: string | null) {
+  if (!platform || platform === "all") return undefined
+  return sql`${slug(platformCol)} = ${platform}`
+}
+// order_items has no platform column, so filter item lines by their parent order.
+function platformItemCondition(orderIdCol: any, platform?: string | null) {
+  if (!platform || platform === "all") return undefined
+  return sql`EXISTS (SELECT 1 FROM orders po WHERE po."orderId" = ${orderIdCol} AND ${slug(sql`po.platform`)} = ${platform})`
+}
+
+/** Slicer conditions for an ORDERS-based query (Drizzle condition array style). */
+function orderSlicers(channel?: string, mode?: string, platform?: string) {
+  const out: any[] = []
+  const c = channelCondition(orders.orderChannel, channel); if (c) out.push(c)
+  const m = modeCondition(orders.mode, mode); if (m) out.push(m)
+  const p = platformCondition(orders.platform, platform); if (p) out.push(p)
+  return out
+}
+/** Slicer conditions for an ORDER_ITEMS-based query (Drizzle condition array style). */
+function itemSlicers(channel?: string, mode?: string, platform?: string) {
+  const out: any[] = []
+  const c = channelCondition(orderItems.orderChannel, channel); if (c) out.push(c)
+  const m = modeCondition(orderItems.mode, mode); if (m) out.push(m)
+  const p = platformItemCondition(orderItems.orderId, platform); if (p) out.push(p)
+  return out
+}
+/** Same slicers as a raw ` AND …` fragment, for hand-written SQL. Pass the table alias. */
+function rawItemSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
+  const parts = [
+    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
+    modeCondition(sql.raw(`${alias}.mode`), mode),
+    platformItemCondition(sql.raw(`${alias}."orderId"`), platform),
+  ].filter(Boolean)
+  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
+}
+function rawOrderSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
+  const parts = [
+    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
+    modeCondition(sql.raw(`${alias}.mode`), mode),
+    platformCondition(sql.raw(`${alias}.platform`), platform),
+  ].filter(Boolean)
+  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
+}
+
 // ─── Reviewed-cost resolution (normalisation layer) ──────────────────────────
 // Reports cost POS lines through the human-reviewed item_alias → dim_costing_item
 // mapping, NOT the legacy menu_items.costPrice exact-name join (which misses the
@@ -605,13 +679,14 @@ export async function clearSyncData(scope: "orders" | "deliveries" | "all") {
 }
 
 // ─── Dashboard Data Fetchers ──────────────────────────────────────────────
-export async function getOverviewKPIs(startDate: string, endDate: string, location?: string) {
+export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const orderDateFilter = [
     sql`${orders.date}::date >= ${startDate}::date`,
     sql`${orders.date}::date <= ${endDate}::date`,
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
+  orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
 
   const itemConditions: any[] = [
     sql`${orderItems.date}::date >= ${startDate}::date`,
@@ -620,6 +695,7 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
+  itemConditions.push(...itemSlicers(channel, mode, platform))
 
   // Run both aggregates in parallel — independent queries, no reason to await serially
   const cl = costLookup()
@@ -646,7 +722,7 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
   return { ...result[0], ...itemResult[0] }
 }
 
-export async function getItemProfitability(startDate: string, endDate: string, location?: string) {
+export async function getItemProfitability(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -656,6 +732,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  conditions.push(...itemSlicers(channel, mode, platform))
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -682,7 +759,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
     .orderBy(desc(sql`SUM(${orderItems.amount}::numeric)`))
 }
 
-export async function getCategoryPerformance(startDate: string, endDate: string, location?: string) {
+export async function getCategoryPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -690,6 +767,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
     sql`${orderItems.amount}::numeric > 0`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  conditions.push(...itemSlicers(channel, mode, platform))
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -711,8 +789,9 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
 }
 
 // Top items per platform (order channel) — for the per-platform sales bar charts.
-export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8) {
+export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8, channel?: string, mode?: string, platform?: string) {
   const locSql = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const chSql = rawItemSlicers("oi", channel, mode, platform)
   const raw = await db.execute<{ platform: string; itemName: string; revenue: string; qty: string }>(sql`
     SELECT platform, "itemName", revenue, qty FROM (
       SELECT COALESCE(oi."orderChannel", oi.mode, 'Unknown') AS platform,
@@ -723,7 +802,7 @@ export async function getTopItemsByPlatform(startDate: string, endDate: string, 
       FROM order_items oi
       WHERE oi.date::date >= ${startDate}::date AND oi.date::date <= ${endDate}::date
         AND oi.cancelled = false AND oi.amount::numeric > 0
-        ${locSql}
+        ${locSql}${chSql}
       GROUP BY COALESCE(oi."orderChannel", oi.mode, 'Unknown'), oi."itemName"
     ) z
     WHERE rn <= ${perPlatform}
@@ -740,9 +819,10 @@ export async function getTopItemsByPlatform(startDate: string, endDate: string, 
     .sort((a, b) => b.total - a.total)
 }
 
-export async function getPlatformPerformance(startDate: string, endDate: string, location?: string) {
+export async function getPlatformPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   return db
     .select({
@@ -759,9 +839,10 @@ export async function getPlatformPerformance(startDate: string, endDate: string,
     .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
-export async function getHourlyDemand(startDate: string, endDate: string, location?: string) {
+export async function getHourlyDemand(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   return db
     .select({
@@ -969,13 +1050,14 @@ export async function getMenuItems() {
   return db.select().from(menuItems).orderBy(menuItems.itemName)
 }
 
-export async function getOfferAnalysis(startDate: string, endDate: string, location?: string) {
+export async function getOfferAnalysis(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   const discountedOrders = await db
     .select({
@@ -1119,13 +1201,14 @@ export async function getWebCustomerItemsBySegment(startDate: string, endDate: s
   return { newCustomers: bySeg("New"), returning: bySeg("Returning"), regular: bySeg("Regular") }
 }
 
-export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string) {
+export async function getHourlyDemandHeatmap(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   // Daily totals + day-of-week breakdown are independent — run them together
   const [daily, dowBreakdown] = await Promise.all([
@@ -1158,7 +1241,7 @@ export async function getHourlyDemandHeatmap(startDate: string, endDate: string,
   return { daily, dowBreakdown }
 }
 
-export async function getHourlyBreakdown(startDate: string, endDate: string, location?: string | null, dayOfWeek?: number | null) {
+export async function getHourlyBreakdown(startDate: string, endDate: string, location?: string | null, dayOfWeek?: number | null, channel?: string, mode?: string, platform?: string) {
   // Use orders.orderTime (Presto timestamp) — falls back to Shipday if not yet populated
   const conditions: any[] = [
     dateGte(orders.date, startDate),
@@ -1167,6 +1250,7 @@ export async function getHourlyBreakdown(startDate: string, endDate: string, loc
     sql`${orders.orderTime} IS NOT NULL`,
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
   // orderTime is stored as UTC wall-clock — convert to UK local (Europe/London, GMT/BST)
   // before extracting the hour/day, otherwise during BST every order reads an hour early
   // and the chart shows trade before the shop opens (GA 10:30, HP 11:00).
@@ -1188,7 +1272,7 @@ export async function getHourlyBreakdown(startDate: string, endDate: string, loc
 }
 
 // Revenue heatmap: day-of-week × hour (UK local time) for staffing/offer timing.
-export async function getRevenueHeatmap(startDate: string, endDate: string, location?: string) {
+export async function getRevenueHeatmap(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
@@ -1196,6 +1280,7 @@ export async function getRevenueHeatmap(startDate: string, endDate: string, loca
     sql`${orders.orderTime} IS NOT NULL`,
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   return db
     .select({
@@ -1212,13 +1297,14 @@ export async function getRevenueHeatmap(startDate: string, endDate: string, loca
     )
 }
 
-export async function getModeBreakdown(startDate: string, endDate: string, location?: string) {
+export async function getModeBreakdown(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [
     dateGte(orders.date, startDate),
     dateLte(orders.date, endDate),
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   return db
     .select({
@@ -1234,9 +1320,10 @@ export async function getModeBreakdown(startDate: string, endDate: string, locat
     .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
-export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string) {
+export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
+  conditions.push(...orderSlicers(channel, mode, platform))
 
   // Group by date only (one row per day). Per-location revenue is added via
   // conditional sums so a single point carries both stores' trends for comparison.
@@ -1256,9 +1343,9 @@ export async function getDailyRevenueTrend(startDate: string, endDate: string, l
 }
 
 // Order line structure validation — surfaces malformed/orphan rows in the basket data.
-export async function getOrderLineValidation(startDate: string, endDate: string, location?: string) {
-  const oiLoc = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
-  const oLoc = location && location !== "all" ? sql` AND o.location = ${location}` : sql``
+export async function getOrderLineValidation(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+  const oiLoc = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
+  const oLoc = sql`${location && location !== "all" ? sql` AND o.location = ${location}` : sql``}${rawOrderSlicers("o", channel, mode, platform)}`
 
   const raw = await db.execute<Record<string, string>>(sql`
     SELECT
@@ -1315,9 +1402,9 @@ export async function getOrderLineValidation(startDate: string, endDate: string,
   }
 }
 
-export async function getBasketAnalysis(startDate: string, endDate: string, location?: string) {
+export async function getBasketAnalysis(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
   // Raw SQL for subquery-based aggregations — Drizzle conditions can't be interpolated into FROM subqueries
-  const locFilter = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const locFilter = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
   // Keep only real sellable products — drop modifier lines (dips/options/etc) and meal-upgrade
   // add-ons so item lists, counts and the distribution reflect actual basket contents.
   const realProduct = sql.raw(`(${basketGroup(`oi."categoryName"`, `oi."itemName"`)}) <> 'Modifier' AND NOT ${mealBundleSql(`oi."itemName"`)}`)
@@ -1330,6 +1417,7 @@ export async function getBasketAnalysis(startDate: string, endDate: string, loca
     sql`(${sql.raw(basketGroup(`order_items."categoryName"`, `order_items."itemName"`))}) <> 'Modifier' AND NOT ${sql.raw(mealBundleSql(`order_items."itemName"`))}`,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  conditions.push(...itemSlicers(channel, mode, platform))
 
   // All three are independent reads — fire them in parallel
   const [summaryRows, distRows, topItems] = await Promise.all([
@@ -1441,8 +1529,8 @@ const mealBundleSql = (nameCol: string) =>
 
 // Real market-basket analysis: item affinity (what's bought together), attach-rate of
 // add-ons onto mains (the upsell gap), and basket-value lift (the £ upside of upselling).
-export async function getBasketInsights(startDate: string, endDate: string, location?: string) {
-  const locFilter = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+export async function getBasketInsights(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+  const locFilter = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
   const grp = sql.raw(basketGroup(`oi."categoryName"`, `oi."itemName"`))
   const meal = sql.raw(mealBundleSql(`oi."itemName"`))
 
@@ -1614,6 +1702,70 @@ export async function getForecastData(location?: string) {
   return { dowStats, recentTrend }
 }
 
+// ─── Offer catalogue: which offers are currently available ───────────────────
+// Presto's sales API (api.sales.prestoexpress.co.uk) exposes reports only — there is
+// no menu/catalogue endpoint to ask "what offers are live right now". The offer list
+// therefore comes from the sold items themselves: every order_items row whose
+// categoryName matches OFFERS ("OFFERS", "BUY 1 GET 1 FREE OFFER", …) is an offer
+// redemption, and the trimmed itemName is the offer name.
+//
+// An offer counts as CURRENTLY AVAILABLE when it was still being redeemed within
+// OFFER_ACTIVE_WINDOW_DAYS of the most recent synced sales date. Recency is measured
+// against the latest data date rather than today's clock, so a lagging sync doesn't
+// wrongly retire every offer — the returned `asOf` says which date it was judged on.
+// This is deliberately scanned over ALL history, not the dashboard's date filter, so
+// a live offer still shows up when you're looking at a period it wasn't used in.
+const OFFER_ACTIVE_WINDOW_DAYS = 14
+
+export async function getAvailableOffers(location?: string, channel?: string, mode?: string, platform?: string) {
+  const locSql = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
+
+  const raw = await db.execute<{
+    offer: string; orders: string; units: string; revenue: string
+    first_seen: string; last_seen: string; days_since: string; as_of: string
+  }>(sql`
+    WITH latest AS (SELECT MAX(date) AS d FROM order_items)
+    SELECT TRIM(oi."itemName")                     AS offer,
+           COUNT(DISTINCT oi."orderId")            AS orders,
+           COALESCE(SUM(oi.qty::numeric), 0)       AS units,
+           COALESCE(SUM(oi.amount::numeric), 0)    AS revenue,
+           MIN(oi.date)::text                      AS first_seen,
+           MAX(oi.date)::text                      AS last_seen,
+           ((SELECT d FROM latest) - MAX(oi.date)) AS days_since,
+           (SELECT d FROM latest)::text            AS as_of
+    FROM order_items oi
+    WHERE oi."categoryName" ILIKE '%offer%'
+      AND oi.cancelled = false
+      -- Stray POS line mis-filed under Offers; not a real promotion, exclude it.
+      AND LOWER(TRIM(oi."itemName")) <> 'zinger burger solo'
+      ${locSql}
+    GROUP BY TRIM(oi."itemName")
+    ORDER BY MAX(oi.date) DESC, COUNT(DISTINCT oi."orderId") DESC
+  `)
+
+  const rows = ((raw as any).rows ?? raw) as any[]
+  const offers = rows.map((r) => {
+    const daysSince = Number(r.days_since ?? 0)
+    return {
+      offer: r.offer as string,
+      orders: Number(r.orders),
+      units: Number(r.units),
+      revenue: Number(r.revenue),
+      firstSeen: r.first_seen as string,
+      lastSeen: r.last_seen as string,
+      daysSince,
+      available: daysSince <= OFFER_ACTIVE_WINDOW_DAYS,
+    }
+  })
+
+  return {
+    asOf: (rows[0]?.as_of as string) ?? null,
+    windowDays: OFFER_ACTIVE_WINDOW_DAYS,
+    offers,
+    availableCount: offers.filter((o) => o.available).length,
+  }
+}
+
 // ─── Offer Performance Tracking ───────────────────────────────────────────
 // Offers come from Presto as order_items rows where categoryName = 'OFFERS'.
 // The (trimmed) itemName is the offer name. Multiple offers are supported.
@@ -1622,8 +1774,11 @@ export async function getOfferAnalytics(
   endDate: string,
   location?: string,
   offerName?: string | null,
+  channel?: string,
+  mode?: string,
+  platform?: string,
 ) {
-  const locSql = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
+  const locSql = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
 
   // 1) List of all distinct offers in range (for the name slicer) + headline numbers
   const offerListRaw = await db.execute<{
@@ -1655,7 +1810,7 @@ export async function getOfferAnalytics(
   }))
 
   // 2) Baseline: overall AOV + overall margin % across all (non-offer-specific) orders in range
-  const orderLoc = location && location !== "all" ? sql` AND o.location = ${location}` : sql``
+  const orderLoc = sql`${location && location !== "all" ? sql` AND o.location = ${location}` : sql``}${rawOrderSlicers("o", channel, mode, platform)}`
   const baseRaw = await db.execute<{ total_orders: string; aov: string; revenue: string }>(sql`
     SELECT COUNT(*) AS total_orders,
            COALESCE(AVG(o."totalAmount"::numeric), 0) AS aov,

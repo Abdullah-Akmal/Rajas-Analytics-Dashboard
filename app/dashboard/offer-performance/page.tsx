@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getOfferAnalytics } from "@/app/actions/dashboard"
+import { getOfferAnalytics, getAvailableOffers } from "@/app/actions/dashboard"
 import { DateLocationFilter } from "@/components/date-location-filter"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, LineChart, Line, CartesianGrid } from "recharts"
 import { format, subDays } from "date-fns"
-import { Tag, PoundSterling, TrendingUp, Hash, Percent, Gauge } from "lucide-react"
+import { Tag, PoundSterling, TrendingUp, Hash, Percent, Gauge, Sparkles } from "lucide-react"
 
 type Analytics = Awaited<ReturnType<typeof getOfferAnalytics>>
+type Catalogue = Awaited<ReturnType<typeof getAvailableOffers>>
 type OfferRow = { offer: string; orders: number; units: number; offerRevenue: number; offerDiscount: number }
 
 const chartCfg = {
@@ -35,15 +36,27 @@ export default function OfferPerformancePage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [offer, setOffer] = useState<string>("all")
   const [data, setData] = useState<Analytics | null>(null)
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchData = async (f: typeof filters, off: string) => {
     setLoading(true)
     try {
-      setData(await getOfferAnalytics(f.startDate, f.endDate, f.location, off))
+      // The catalogue is deliberately NOT date-filtered — it answers "which offers are
+      // live right now", so a running offer still appears when the selected period
+      // predates it or contains no redemptions.
+      const [analytics, cat] = await Promise.all([
+        getOfferAnalytics(f.startDate, f.endDate, f.location, off, f.channel, f.mode, f.platform),
+        getAvailableOffers(f.location, f.channel, f.mode, f.platform),
+      ])
+      setData(analytics)
+      setCatalogue(cat)
     } finally {
       setLoading(false)
     }
@@ -57,7 +70,20 @@ export default function OfferPerformancePage() {
 
   const eff = sel ? effectiveness(sel.aovUpliftPct, sel.marginPct, baseline?.overallMarginPct ?? 0) : null
 
-  const noOffers = !loading && offers.length === 0
+  // Merge the live catalogue with in-period usage: every known offer is listed, tagged
+  // Live/Ended, and annotated with how much it was actually used in the selected range.
+  // A Live offer with 0 in-period orders is itself a finding, so it must not be hidden.
+  const usageByOffer = new Map(offers.map((o) => [o.offer, o]))
+  const offerList = (catalogue?.offers ?? [])
+    .map((c) => ({
+      ...c,
+      rangeOrders: usageByOffer.get(c.offer)?.orders ?? 0,
+      rangeRevenue: usageByOffer.get(c.offer)?.offerRevenue ?? 0,
+    }))
+    .sort((a, b) => Number(b.available) - Number(a.available) || b.rangeOrders - a.rangeOrders)
+  const liveOffers = offerList.filter((o) => o.available)
+
+  const noOffers = !loading && offerList.length === 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,27 +94,85 @@ export default function OfferPerformancePage() {
 
       <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f, offer) }} />
 
+      {/* Currently available offers — the live promotion list, independent of the date filter */}
+      <Card>
+        <CardHeader className="pb-2 text-center">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="size-4" /> Currently Available Offers
+            {!loading && <Badge variant="outline" className="ml-1 text-[10px]">{liveOffers.length} live</Badge>}
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Offers still being redeemed as of {catalogue?.asOf ?? "the latest sync"} — an offer counts as live if it was
+            used within the last {catalogue?.windowDays ?? 14} days of synced sales
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex gap-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-56" />)}</div>
+          ) : offerList.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              No offers have ever been recorded here — this location has never booked an item in the “OFFERS” category.
+            </p>
+          ) : liveOffers.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              {offerList.length} offer{offerList.length === 1 ? " has" : "s have"} run here, but none in the last {catalogue?.windowDays ?? 14} days
+              of synced sales — they all look retired. Most recent: {offerList[0].offer} ({offerList[0].lastSeen}).
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {liveOffers.map((o) => (
+                <div key={o.offer} className="rounded-lg border border-[oklch(0.35_0.08_150)] bg-[oklch(0.25_0.08_150)]/40 px-3 py-2 min-w-52">
+                  <div className="flex items-center gap-2">
+                    <span className="size-1.5 rounded-full bg-[oklch(0.7_0.15_150)]" />
+                    <span className="text-xs font-semibold text-foreground">{o.offer}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {o.orders.toLocaleString()} redemptions all-time · £{o.revenue.toFixed(0)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Running since {o.firstSeen} · last used {o.daysSince === 0 ? "today" : `${o.daysSince}d ago`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Offer name slicer */}
       <Card>
         <CardHeader className="pb-2 text-center">
           <CardTitle className="text-sm font-semibold flex items-center gap-2"><Tag className="size-4" /> Select Offer</CardTitle>
-          <CardDescription className="text-xs">Choose which offer to analyse — each is a distinct promotion booked in Presto</CardDescription>
+          <CardDescription className="text-xs">Choose which offer to analyse — live offers first, then retired ones. Counts shown are for the selected period</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex gap-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-40" />)}</div>
           ) : noOffers ? (
-            <p className="text-xs text-muted-foreground py-2">No offers found in this period. Offers appear here once Presto orders include items in the “OFFERS” category.</p>
+            <p className="text-xs text-muted-foreground py-2">No offers found. Offers appear here once Presto orders include items in the “OFFERS” category.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {offers.map((o) => (
+              {offerList.map((o) => (
                 <button
                   key={o.offer}
                   onClick={() => { setOffer(o.offer); fetchData(filters, o.offer) }}
                   className={`text-xs px-3 py-2 rounded-lg border text-left transition-all ${sel?.offer === o.offer ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/50"}`}
                 >
-                  <span className="font-semibold block">{o.offer}</span>
-                  <span className={`text-[10px] ${sel?.offer === o.offer ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{o.orders} orders · £{o.offerRevenue.toFixed(0)}</span>
+                  <span className="font-semibold flex items-center gap-1.5">
+                    {o.offer}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
+                      sel?.offer === o.offer
+                        ? "border-primary-foreground/40 text-primary-foreground/90"
+                        : o.available
+                          ? "border-[oklch(0.35_0.08_150)] text-[oklch(0.7_0.15_150)]"
+                          : "border-border text-muted-foreground"
+                    }`}>{o.available ? "Live" : "Ended"}</span>
+                  </span>
+                  <span className={`text-[10px] block mt-0.5 ${sel?.offer === o.offer ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    {o.rangeOrders > 0
+                      ? `${o.rangeOrders} orders · £${o.rangeRevenue.toFixed(0)} in period`
+                      : `Not used in this period · last ${o.lastSeen}`}
+                  </span>
                 </button>
               ))}
             </div>

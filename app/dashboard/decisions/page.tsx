@@ -28,6 +28,9 @@ export default function DecisionsPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [loading, setLoading] = useState(true)
   const [decisions, setDecisions] = useState<Insight[]>([])
@@ -40,13 +43,13 @@ export default function DecisionsPage() {
     setLoading(true)
     try {
       const [kpis, trend, platforms, items, cats, delivery, basket] = await Promise.all([
-        getOverviewKPIs(f.startDate, f.endDate, f.location),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getCategoryPerformance(f.startDate, f.endDate, f.location),
+        getOverviewKPIs(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
         getDeliveryKPIs(f.startDate, f.endDate),
-        getBasketAnalysis(f.startDate, f.endDate, f.location),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
 
       const totalRevenue = num(kpis.totalRevenue)

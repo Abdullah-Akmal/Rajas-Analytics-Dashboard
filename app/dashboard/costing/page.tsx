@@ -38,6 +38,9 @@ export default function CostingPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [items, setItems] = useState<ItemRow[]>([])
   const [categories, setCategories] = useState<unknown[]>([])
@@ -48,8 +51,8 @@ export default function CostingPage() {
     setLoading(true)
     try {
       const [i, c] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getCategoryPerformance(f.startDate, f.endDate, f.location),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
       setItems(i as ItemRow[])
       setCategories(c)

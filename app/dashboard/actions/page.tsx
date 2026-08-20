@@ -42,6 +42,9 @@ export default function ActionsPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [items, setItems] = useState<unknown[]>([])
   const [platforms, setPlatforms] = useState<unknown[]>([])
@@ -60,10 +63,10 @@ export default function ActionsPage() {
     setLoading(true)
     try {
       const [i, p, d, c] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
         getDeliveryPerformance(f.startDate, f.endDate),
-        getCategoryPerformance(f.startDate, f.endDate, f.location),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
       setItems(i); setPlatforms(p); setDrivers(d); setCategories(c)
     } finally {

@@ -52,6 +52,9 @@ export default function AlertsPage() {
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
   })
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,9 +64,9 @@ export default function AlertsPage() {
     setLoading(true)
     try {
       const [items, trend, platforms, delivery] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
         getDeliveryKPIs(f.startDate, f.endDate),
       ])
 
