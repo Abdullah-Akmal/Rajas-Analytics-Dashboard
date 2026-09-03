@@ -49,12 +49,15 @@ const SEVERITY_STYLE: Record<Severity, { badge: string; icon: React.ReactNode; b
 
 export default function AlertsPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,9 +67,9 @@ export default function AlertsPage() {
     setLoading(true)
     try {
       const [items, trend, platforms, delivery] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
         getDeliveryKPIs(f.startDate, f.endDate),
       ])
 

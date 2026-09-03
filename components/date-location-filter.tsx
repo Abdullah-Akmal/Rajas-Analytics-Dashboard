@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CalendarIcon } from "lucide-react"
 import { format, subDays } from "date-fns"
+import { getBrands, getProductTypes, getProductCategories } from "@/lib/product-master/actions"
+
+/** Days the dashboard opens on when no range is in the URL or session. */
+export const DEFAULT_RANGE_DAYS = 7
 
 export interface DashboardFilters {
   startDate: string
@@ -14,6 +18,9 @@ export interface DashboardFilters {
   channel: string
   mode: string
   platform: string
+  brand: string
+  productType: string
+  category: string
 }
 
 interface DateLocationFilterProps {
@@ -36,12 +43,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function DateLocationFilter({ onFilterChange, defaultLocation = "all", defaultChannel = "all", showChannel = true }: DateLocationFilterProps) {
-  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  // Default to the last 7 days rather than today. Today's trading is always partial —
+  // and if the overnight sync hasn't run, today has no rows at all, which made every
+  // screen open empty and read as "the dashboard is broken". A week is the shortest
+  // window that is always populated. Any other range is one click away.
+  const [startDate, setStartDate] = useState(format(subDays(new Date(), DEFAULT_RANGE_DAYS), "yyyy-MM-dd"))
   const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
   const [location, setLocation] = useState(defaultLocation)
   const [channel, setChannel] = useState(defaultChannel)
   const [mode, setMode] = useState("all")
   const [platform, setPlatform] = useState("all")
+  // §11 dimensions sourced from the Product Master rather than hard-coded, so a new
+  // brand or product type appears here as soon as it exists in the costing sheet.
+  const [brand, setBrand] = useState("all")
+  const [productType, setProductType] = useState("all")
+  const [category, setCategory] = useState("all")
+  const [brands, setBrands] = useState<string[]>([])
+  const [types, setTypes] = useState<string[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getBrands(), getProductTypes(), getProductCategories()])
+      .then(([b, t, c]) => {
+        if (cancelled) return
+        setBrands(b); setTypes(t); setCategories(c)
+      })
+      .catch(() => { /* filter falls back to "All" options */ })
+    return () => { cancelled = true }
+  }, [])
 
   // Persist the selected filters so every dashboard page compares like-for-like. Two layers:
   //  • sessionStorage — survives navigation between pages (sidebar links don't carry query params)
@@ -71,13 +101,14 @@ export function DateLocationFilter({ onFilterChange, defaultLocation = "all", de
       setMode(nm)
       setPlatform(nf)
       persist(ns, ne, nl, nc, nm, nf)
-      onFilterChange({ startDate: ns, endDate: ne, location: nl, channel: nc, mode: nm, platform: nf })
+      onFilterChange({ startDate: ns, endDate: ne, location: nl, channel: nc, mode: nm, platform: nf, brand: "all", productType: "all", category: "all" })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const persist = (s: string, e: string, l: string, c: string, m: string, f: string) => {
-    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ startDate: s, endDate: e, location: l, channel: c, mode: m, platform: f })) } catch { /* ignore */ }
+  const persist = (s: string, e: string, l: string, c: string, m: string, f: string,
+                   b = brand, pt = productType, cat = category) => {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ startDate: s, endDate: e, location: l, channel: c, mode: m, platform: f, brand: b, productType: pt, category: cat })) } catch { /* ignore */ }
     const p = new URLSearchParams(window.location.search)
     p.set("start", s)
     p.set("end", e)
@@ -85,6 +116,9 @@ export function DateLocationFilter({ onFilterChange, defaultLocation = "all", de
     p.set("ch", c)
     p.set("md", m)
     p.set("pf", f)
+    p.set("br", b)
+    p.set("pt", pt)
+    p.set("cat", cat)
     window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`)
   }
 
@@ -101,12 +135,12 @@ export function DateLocationFilter({ onFilterChange, defaultLocation = "all", de
     setStartDate(start)
     setEndDate(end)
     persist(start, end, location, channel, mode, platform)
-    onFilterChange({ startDate: start, endDate: end, location, channel, mode, platform })
+    onFilterChange({ startDate: start, endDate: end, location, channel, mode, platform, brand, productType, category })
   }
 
   const apply = () => {
     persist(startDate, endDate, location, channel, mode, platform)
-    onFilterChange({ startDate, endDate, location, channel, mode, platform })
+    onFilterChange({ startDate, endDate, location, channel, mode, platform, brand, productType, category })
   }
 
   return (
@@ -155,6 +189,40 @@ export function DateLocationFilter({ onFilterChange, defaultLocation = "all", de
             <SelectItem value="all">All Locations</SelectItem>
             <SelectItem value="Hyde Park">Hyde Park</SelectItem>
             <SelectItem value="Grand Arcade">Grand Arcade</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field label="Brand">
+        <Select value={brand} onValueChange={(v) => setBrand(v ?? "all")}>
+          <SelectTrigger className="h-8 text-xs w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Brands</SelectItem>
+            {brands.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field label="Product type">
+        <Select value={productType} onValueChange={(v) => setProductType(v ?? "all")}>
+          <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {types.map((t) => (
+              <SelectItem key={t} value={t}>
+                {t.replace(/_/g, " ").replace(/\w/g, (m) => m.toUpperCase())}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field label="Category">
+        <Select value={category} onValueChange={(v) => setCategory(v ?? "all")}>
+          <SelectTrigger className="h-8 text-xs w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
       </Field>

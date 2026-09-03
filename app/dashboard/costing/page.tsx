@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { getItemProfitability, getCategoryPerformance } from "@/app/actions/dashboard"
 import { DateLocationFilter } from "@/components/date-location-filter"
+import { ProductsRequiringAttention } from "@/components/analytics/products-requiring-attention"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +19,7 @@ type ItemRow = {
   itemName: string
   categoryName: string
   itemType: string
+  costStatus?: string
   totalQty: number
   totalRevenue: number
   avgUnitPrice: number
@@ -35,12 +37,15 @@ const chartConfig = {
 
 export default function CostingPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [items, setItems] = useState<ItemRow[]>([])
   const [categories, setCategories] = useState<unknown[]>([])
@@ -51,8 +56,8 @@ export default function CostingPage() {
     setLoading(true)
     try {
       const [i, c] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
       setItems(i as ItemRow[])
       setCategories(c)
@@ -88,6 +93,8 @@ export default function CostingPage() {
         ex.grossProfit = Number(ex.grossProfit) + Number(r.grossProfit)
         ex.totalDiscount = Number(ex.totalDiscount) + Number(r.totalDiscount)
         if (cat && !ex.categories.includes(cat)) ex.categories.push(cat)
+        // Stays a modifier only while every contributing row is uncosted.
+        if (r.costStatus === "costed") ex.costStatus = "costed"
       }
     }
     const out = [...m.values()]
@@ -106,17 +113,24 @@ export default function CostingPage() {
     i.categories.some((c) => c.toLowerCase().includes(search.toLowerCase()))
   )
 
-  const totalRevenue = aggItems.reduce((s, i) => s + Number(i.totalRevenue), 0)
-  const totalProfit = aggItems.reduce((s, i) => s + Number(i.grossProfit), 0)
-  const totalCost = aggItems.reduce((s, i) => s + Number(i.totalCost), 0)
+  // Modifiers (lines with no resolvable cost) stay visible in the table below, but
+  // are kept out of the margin maths — counting them at zero cost would report them
+  // as 100% gross profit and inflate the headline margin.
+  const costedItems = aggItems.filter((i) => i.costStatus !== "modifier")
+  const modifierItems = aggItems.filter((i) => i.costStatus === "modifier")
+  const modifierRevenue = modifierItems.reduce((s, i) => s + Number(i.totalRevenue), 0)
+
+  const totalRevenue = costedItems.reduce((s, i) => s + Number(i.totalRevenue), 0)
+  const totalProfit = costedItems.reduce((s, i) => s + Number(i.grossProfit), 0)
+  const totalCost = costedItems.reduce((s, i) => s + Number(i.totalCost), 0)
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   const marginColor = (m: number) =>
     m >= 60 ? "text-[oklch(0.7_0.15_150)]" : m >= 40 ? "text-[oklch(0.75_0.18_75)]" : "text-destructive"
 
-  const top10ByProfit = [...aggItems].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)
-  const top10ByMargin = [...aggItems].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)
-  const bottom10 = [...aggItems].filter(i => Number(i.totalQty) > 5).sort((a, b) => Number(a.marginPercent) - Number(b.marginPercent)).slice(0, 10)
+  const top10ByProfit = [...costedItems].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)
+  const top10ByMargin = [...costedItems].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)
+  const bottom10 = [...costedItems].filter(i => Number(i.totalQty) > 5).sort((a, b) => Number(a.marginPercent) - Number(b.marginPercent)).slice(0, 10)
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,26 +147,47 @@ export default function CostingPage() {
           { label: "Total Revenue", value: `£${Number(totalRevenue).toFixed(2)}` },
           { label: "Total Cost", value: `£${Number(totalCost).toFixed(2)}` },
           { label: "Gross Profit", value: `£${Number(totalProfit).toFixed(2)}` },
-          { label: "Avg Margin", value: `${avgMargin.toFixed(1)}%` },
+          {
+            label: "Avg Margin",
+            value: `${avgMargin.toFixed(1)}%`,
+            note: modifierItems.length
+              ? `excludes ${modifierItems.length} uncosted (£${modifierRevenue.toFixed(0)})`
+              : undefined,
+          },
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{k.label}</p>
               <p className="text-xl font-bold text-foreground mt-1">{k.value}</p>
+              {"note" in k && k.note && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">{k.note}</p>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Tabs defaultValue="items">
+      <Tabs defaultValue="attention">
         <TabsList>
-          <TabsTrigger value="items">Item Level</TabsTrigger>
+          <TabsTrigger value="attention">Requiring Attention</TabsTrigger>
+          <TabsTrigger value="items">View All Products</TabsTrigger>
           <TabsTrigger value="category">By Category</TabsTrigger>
           <TabsTrigger value="top">Top Performers</TabsTrigger>
           <TabsTrigger value="risk">At Risk</TabsTrigger>
         </TabsList>
 
         {/* Item Level Tab */}
+        {/* §7: "Huge default item list — REMOVE. Products Requiring Attention — ADD.
+            View All Products — ADD as drill-down." */}
+        <TabsContent value="attention" className="mt-4">
+          <ProductsRequiringAttention
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            location={filters.location}
+            brand={filters.brand}
+          />
+        </TabsContent>
+
         <TabsContent value="items" className="mt-4">
           <Card>
             <CardHeader className="pb-3">
@@ -197,7 +232,16 @@ export default function CostingPage() {
                   <TableBody>
                     {filtered.map((item, i) => (
                       <TableRow key={i}>
-                        <TableCell className="text-xs font-medium">{item.itemName}</TableCell>
+                        <TableCell className="text-xs font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            {item.itemName}
+                            {item.costStatus === "modifier" && (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal">
+                                modifier
+                              </Badge>
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-xs">
                           <Badge variant="outline" className="text-[10px]">{item.categoryName || "—"}</Badge>
                           {item.categories.length > 1 && (

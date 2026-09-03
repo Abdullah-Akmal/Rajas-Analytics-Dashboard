@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ItemPerformancePanel } from "@/components/analytics/item-performance-panel"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
@@ -57,12 +58,15 @@ function num(v: unknown) { return Number(v ?? 0) }
 
 export default function SalesPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [items, setItems] = useState<ItemRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,7 +77,7 @@ export default function SalesPage() {
   const fetchData = async (f: typeof filters) => {
     setLoading(true)
     try {
-      setItems(await getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform) as ItemRow[])
+      setItems(await getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }) as ItemRow[])
     } finally {
       setLoading(false)
     }
@@ -199,15 +203,27 @@ export default function SalesPage() {
         </div>
       )}
 
-      <Tabs defaultValue="matrix">
+      <Tabs defaultValue="priority">
         <TabsList>
-          <TabsTrigger value="matrix">Menu Engineering Matrix</TabsTrigger>
+          <TabsTrigger value="priority">Priority</TabsTrigger>
+          <TabsTrigger value="matrix">View Menu Engineering Matrix</TabsTrigger>
           <TabsTrigger value="ranked">Ranked Items</TabsTrigger>
           <TabsTrigger value="pareto">Pareto (80/20)</TabsTrigger>
           <TabsTrigger value="table">Full Table</TabsTrigger>
         </TabsList>
 
         {/* Menu Engineering Matrix */}
+        {/* §8: "Keep the existing menu-engineering matrix capability behind 'View Menu
+            Engineering Matrix'. It must not be the primary owner interface." */}
+        <TabsContent value="priority" className="mt-4">
+          <ItemPerformancePanel
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            location={filters.location}
+            brand={filters.brand}
+          />
+        </TabsContent>
+
         <TabsContent value="matrix" className="mt-4">
           <Card>
             <CardHeader className="pb-2 text-center">

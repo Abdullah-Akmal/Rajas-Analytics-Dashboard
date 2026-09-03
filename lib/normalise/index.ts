@@ -327,3 +327,99 @@ export function detectVariant(
   if (r.includes("make it a meal") || r.includes("meal") || c.includes("meal")) return "meal"
   return null
 }
+
+// ─── Brand banner detector ──────────────────────────────────────────────────
+// The costing sheet is split by full-width banner rows — a value in col A with an
+// empty col B — that name the brand the following sections belong to:
+//
+//   r1    "Rajas Menu Costing"                 → every section below is Rajas
+//   r231  "House of Peri Peri Menu Costing"    → …until this, then House of Peri Peri
+//
+// Before this existed the banner fell through the generic "col B empty ⇒ category
+// header" branch, so House of Peri items were stored with the *banner* as their
+// category and no brand at all.
+//
+// Unrecognised banners pass through as their own brand name rather than being
+// rejected, so adding a third brand to the sheet needs no code change.
+const KNOWN_BRANDS = ["Rajas", "House of Peri Peri"]
+
+/**
+ * Returns the brand name if `colA` is a brand banner, else null.
+ * Matches on the "… Menu Costing" suffix, which is what makes a banner a banner.
+ */
+export function parseBrandBanner(colA: string | null | undefined): string | null {
+  if (!colA) return null
+  const text = colA.toString().replace(/\s+/g, " ").trim()
+  // Must end with "Menu Costing" (case-insensitive) and carry a name before it.
+  const m = /^(.+?)\s+menu\s+costing$/i.exec(text)
+  if (!m) return null
+  const name = m[1].trim()
+  if (!name) return null
+  // Canonicalise known brands so "Raja's"/"RAJAS"/"Rajas" all land on one value.
+  const key = name.toLowerCase().replace(/[^a-z]/g, "")
+  const known = KNOWN_BRANDS.find((b) => b.toLowerCase().replace(/[^a-z]/g, "") === key)
+  return known ?? name
+}
+
+// ─── Duplicate costing-row merge ────────────────────────────────────────────
+// dim_costing_item.canonicalName is UNIQUE, and Postgres refuses an
+// INSERT ... ON CONFLICT DO UPDATE whose VALUES list names the same conflict
+// target twice ("ON CONFLICT DO UPDATE command cannot affect row a second time").
+// That aborts the ENTIRE batch, so a single duplicated name in the sheet fails the
+// whole costing sync.
+//
+// The sheet legitimately lists some products twice — once in a solo section and
+// once in a meal section — so merge field-by-field, keeping whichever occurrence
+// actually carries a value. When the SAME field holds two different values that is
+// a real sheet error: last one wins, and the clash is returned for the sync log.
+// Real source values from the sheet. A clash between two of these is a genuine
+// data error worth reporting.
+export const COSTING_MERGE_FIELDS = [
+  "cost8inch", "cost12inch", "cost16inch", "costSolo", "costMeal",
+  "sellingPriceHydePark", "sellingPriceGrandArcade",
+] as const
+
+export type MergeableCostingRow = { canonicalName: string; primaryCost?: string | null } & {
+  [K in (typeof COSTING_MERGE_FIELDS)[number]]?: string | null
+}
+
+export function mergeDuplicateCostingRows<T extends MergeableCostingRow>(
+  rows: T[],
+): { merged: T[]; collapsed: number; conflicts: string[] } {
+  const byName = new Map<string, T>()
+  const conflicts: string[] = []
+  for (const row of rows) {
+    const key = row.canonicalName.trim().toLowerCase()
+    const prev = byName.get(key)
+    if (!prev) {
+      byName.set(key, { ...row })
+      continue
+    }
+    for (const f of COSTING_MERGE_FIELDS) {
+      const a = prev[f] ?? null
+      const b = row[f] ?? null
+      if (b === null) continue // nothing new to contribute
+      if (a === null) {
+        ;(prev as MergeableCostingRow)[f] = b // fill a gap — the solo/meal split case
+        continue
+      }
+      if (a !== b) {
+        conflicts.push(`${row.canonicalName} (${f}: ${a} vs ${b})`)
+        ;(prev as MergeableCostingRow)[f] = b
+      }
+    }
+  }
+  const merged = [...byName.values()]
+  // primaryCost is DERIVED, not a source value — the parser sets it to costSolo/
+  // costMeal for solo_meal sections and the 12"/8" cost for pizzas. When a product is
+  // split across a solo row and a meal row the two primaryCosts naturally differ, so
+  // comparing them would report a conflict on every legitimately-split product.
+  // Recompute it from the merged costs instead. The precedence below resolves
+  // correctly for all three section types: solo_meal picks costSolo, pizza falls
+  // through to cost12/cost8, and simple sections keep the value already parsed.
+  for (const row of merged) {
+    row.primaryCost =
+      row.costSolo ?? row.costMeal ?? row.cost12inch ?? row.cost8inch ?? row.primaryCost ?? null
+  }
+  return { merged, collapsed: rows.length - merged.length, conflicts }
+}

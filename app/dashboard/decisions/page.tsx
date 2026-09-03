@@ -25,12 +25,15 @@ const toneStyle: Record<Insight["tone"], string> = {
 
 export default function DecisionsPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [loading, setLoading] = useState(true)
   const [decisions, setDecisions] = useState<Insight[]>([])
@@ -43,13 +46,13 @@ export default function DecisionsPage() {
     setLoading(true)
     try {
       const [kpis, trend, platforms, items, cats, delivery, basket] = await Promise.all([
-        getOverviewKPIs(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getOverviewKPIs(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
         getDeliveryKPIs(f.startDate, f.endDate),
-        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
 
       const totalRevenue = num(kpis.totalRevenue)

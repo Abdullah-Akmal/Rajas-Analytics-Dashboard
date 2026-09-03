@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { getPlatformPerformance, getTopItemsByPlatform } from "@/app/actions/dashboard"
 import { DateLocationFilter } from "@/components/date-location-filter"
+import { ChannelPerformancePanel } from "@/components/analytics/channel-performance-panel"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -40,12 +41,15 @@ function healthBadge(discountPct: number, aov: number, avgAov: number) {
 
 export default function PlatformsPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [platforms, setPlatforms] = useState<PlatformRow[]>([])
   const [topItems, setTopItems] = useState<Awaited<ReturnType<typeof getTopItemsByPlatform>>>([])
@@ -55,8 +59,8 @@ export default function PlatformsPage() {
     setLoading(true)
     try {
       const [p, t] = await Promise.all([
-        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getTopItemsByPlatform(f.startDate, f.endDate, f.location, 8, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getTopItemsByPlatform(f.startDate, f.endDate, f.location, 8, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
       setPlatforms(p as PlatformRow[])
       setTopItems(t)
@@ -91,11 +95,19 @@ export default function PlatformsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-foreground">Platform Performance</h1>
-        <p className="text-sm text-muted-foreground">Revenue, AOV, and discount analysis by order channel</p>
+        <h1 className="text-2xl font-bold text-foreground">Channel Performance</h1>
+        <p className="text-sm text-muted-foreground">Which channels are growing — and which actually leave Raja&apos;s the most money</p>
       </div>
 
       <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
+
+      {/* §9 primary view: one channel table with revenue, orders, AOV, mix, change
+          and CONTRIBUTION — the figure the spec cares about. */}
+      <ChannelPerformancePanel
+        startDate={filters.startDate}
+        endDate={filters.endDate}
+        location={filters.location}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

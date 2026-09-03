@@ -39,12 +39,15 @@ function priorityStyle(p: string) {
 
 export default function ActionsPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
     channel: "all",
     mode: "all",
     platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [items, setItems] = useState<unknown[]>([])
   const [platforms, setPlatforms] = useState<unknown[]>([])
@@ -63,10 +66,10 @@ export default function ActionsPage() {
     setLoading(true)
     try {
       const [i, p, d, c] = await Promise.all([
-        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
-        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
         getDeliveryPerformance(f.startDate, f.endDate),
-        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
       setItems(i); setPlatforms(p); setDrivers(d); setCategories(c)
     } finally {

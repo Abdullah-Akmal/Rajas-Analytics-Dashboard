@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react"
 import { syncGoogleSheets, syncPrestoData, syncShipdayData, getSyncLogs, clearSyncData } from "@/app/actions/dashboard"
 import { syncCostingSheet, normaliseOrderItems } from "@/lib/normalise/actions"
+import { syncPricingSheet } from "@/lib/pricing/actions"
+import { buildProductMaster } from "@/lib/product-master/actions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { RefreshCw, CheckCircle, XCircle, Clock, Database, Sheet, Truck, GitMerge, Trash2, AlertTriangle } from "lucide-react"
+import { RefreshCw, CheckCircle, XCircle, Clock, Database, Sheet, Truck, GitMerge, Trash2, AlertTriangle, Tag, Boxes } from "lucide-react"
 import { format } from "date-fns"
 
 type SyncLog = {
@@ -21,7 +23,7 @@ type SyncLog = {
   syncedAt: Date
 }
 
-export default function SyncPage() {
+export default function SyncPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [logs, setLogs] = useState<SyncLog[]>([])
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [messages, setMessages] = useState<Record<string, string>>({})
@@ -92,7 +94,7 @@ export default function SyncPage() {
 
   useEffect(() => { fetchLogs() }, [])
 
-  const run = async <T extends { success: boolean; error?: string; count?: number; orders?: number; items?: number }>(
+  const run = async <T extends { success: boolean; error?: string; count?: number; orders?: number; items?: number; products?: number }>(
     key: string,
     fn: () => Promise<T>,
     formatMsg?: (result: T) => string,
@@ -117,10 +119,12 @@ export default function SyncPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-foreground">Data Sync</h1>
-        <p className="text-sm text-muted-foreground">Pull live data from Google Sheets, Presto and Shipday into the dashboard</p>
-      </div>
+      {!embedded && (
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold text-foreground">Data Sync</h1>
+          <p className="text-sm text-muted-foreground">Pull live data from Google Sheets, Presto and Shipday into the dashboard</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Google Sheets */}
@@ -295,6 +299,101 @@ export default function SyncPage() {
             {messages.costing_sheet && (
               <p className={`text-xs ${messages.costing_sheet.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
                 {messages.costing_sheet}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pricing Engine sheet → pricing_item + pricing_settings */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
+                <Tag className="size-4 text-[oklch(0.7_0.15_60)]" />
+              </div>
+              <div>
+                <CardTitle className="text-sm">Pricing Engine</CardTitle>
+                <CardDescription className="text-xs">Sync sheet → pricing_item</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-xs text-muted-foreground">
+              Pulls the Hyde Park and Grand Arcade tabs — current/recommended prices for
+              both the instore and platform lists, plus each store&apos;s target food-cost
+              and commission settings. Read-only: the sheet stays the source of truth.
+            </p>
+            <Button
+              size="sm"
+              onClick={() =>
+                run(
+                  "pricing_sheet",
+                  syncPricingSheet as () => Promise<{
+                    success: boolean; error?: string; items?: number
+                    stores?: number; matched?: number; unmatched?: number
+                  }>,
+                  (r) =>
+                    `Synced ${r.items ?? 0} price rows across ${r.stores ?? 0} stores — ` +
+                    `${r.matched ?? 0} matched to a costed item, ${r.unmatched ?? 0} unmatched`,
+                )
+              }
+              disabled={loading.pricing_sheet}
+              className="w-full"
+            >
+              <RefreshCw className={`size-3.5 mr-2 ${loading.pricing_sheet ? "animate-spin" : ""}`} />
+              {loading.pricing_sheet ? "Syncing…" : "Sync Pricing Sheet"}
+            </Button>
+            {messages.pricing_sheet && (
+              <p className={`text-xs ${messages.pricing_sheet.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+                {messages.pricing_sheet}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Product Master rebuild — the identity layer everything else joins through */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
+                <Boxes className="size-4 text-[oklch(0.7_0.15_280)]" />
+              </div>
+              <div>
+                <CardTitle className="text-sm">Product Master</CardTitle>
+                <CardDescription className="text-xs">Rebuild product_master</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-xs text-muted-foreground">
+              Unpacks the costing sheet into one product per sellable variant — Solo and
+              Meal separately, each pizza size separately — assigns brand, product type and
+              costing status, then links POS names to their permanent Product ID. Run after
+              a costing or pricing sync.
+            </p>
+            <Button
+              size="sm"
+              onClick={() =>
+                run(
+                  "product_master",
+                  buildProductMaster as () => Promise<{
+                    success: boolean; error?: string; products?: number
+                    costed?: number; costMissing?: number; brands?: number; aliasesLinked?: number
+                  }>,
+                  (r) =>
+                    `${r.products ?? 0} products across ${r.brands ?? 0} brands — ` +
+                    `${r.costed ?? 0} costed, ${r.costMissing ?? 0} cost-missing, ${r.aliasesLinked ?? 0} POS names linked`,
+                )
+              }
+              disabled={loading.product_master}
+              className="w-full"
+            >
+              <RefreshCw className={`size-3.5 mr-2 ${loading.product_master ? "animate-spin" : ""}`} />
+              {loading.product_master ? "Building…" : "Rebuild Product Master"}
+            </Button>
+            {messages.product_master && (
+              <p className={`text-xs ${messages.product_master.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+                {messages.product_master}
               </p>
             )}
           </CardContent>

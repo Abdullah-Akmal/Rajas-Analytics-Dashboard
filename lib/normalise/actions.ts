@@ -1,7 +1,8 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { dimCostingItem, itemAlias, orderItems, syncLogs } from "@/lib/db/schema"
+import { dimCostingItem, itemAlias, orderItems, syncLogs, BRAND_DEFAULT } from "@/lib/db/schema"
+import { parseBrandBanner, mergeDuplicateCostingRows } from "@/lib/normalise/index"
 import { sql, eq, isNull, or, lt } from "drizzle-orm"
 // Safe wrapper — revalidatePath throws outside Next.js request context (CLI scripts)
 function safeRevalidate(path: string) {
@@ -83,7 +84,11 @@ export async function syncCostingSheet() {
     // sections like "Cost Price" / "Meal Cost" / "Cost" sit in col C, pizzas span C–D,
     // etc.) so fixed indices miss most of them. Detecting by header text is robust.
     const parseHeader = (row: string[]): Section | null => {
-      const cells = row.map((c) => (c ?? "").toString().toLowerCase().trim())
+      // Collapse internal whitespace: the House of Peri section header is literally
+      // "Meal  Cost" (two spaces), which failed the `c === "meal cost"` test and fell
+      // through to the generic `includes("cost")` branch — silently dropping every
+      // meal cost for that brand.
+      const cells = row.map((c) => (c ?? "").toString().toLowerCase().replace(/\s+/g, " ").trim())
       const isHeader = cells.some((c) => c === "name" || c === "name " || c.includes("product"))
       if (!isHeader) return null
       const cols: ColMap = {}
@@ -107,6 +112,7 @@ export async function syncCostingSheet() {
 
     type ItemRow = {
       canonicalName: string
+      brand: string
       category: string | null
       itemType: SectionType
       cost8inch: string | null
@@ -122,6 +128,9 @@ export async function syncCostingSheet() {
     const items: ItemRow[] = []
     let currentCategory: string | null = null
     let currentSection: Section | null = null
+    // Everything before the first banner is Rajas (the sheet's first row is the Rajas
+    // banner, but defaulting keeps a banner-less sheet parsing exactly as it did before).
+    let currentBrand: string = BRAND_DEFAULT
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -132,6 +141,18 @@ export async function syncCostingSheet() {
 
       // Category header: col A has text, col B is empty
       if ((!colB || colB === "") && colA && colA.length > 0) {
+        // A brand banner looks identical to a category header, so test for it first.
+        // House of Peri Peri has no category sub-sections in the sheet — the banner is
+        // followed straight by the "Product No." row — so its items legitimately carry
+        // no category and surface as a Data Management exception rather than inheriting
+        // "Add-ons" from the Rajas section immediately above.
+        const banner = parseBrandBanner(colA)
+        if (banner) {
+          currentBrand = banner
+          currentCategory = null
+          currentSection = null
+          continue
+        }
         if (
           colA !== "Product No." &&
           isNaN(Number(colA)) &&
@@ -183,6 +204,7 @@ export async function syncCostingSheet() {
 
       items.push({
         canonicalName: name,
+        brand: currentBrand,
         category: currentCategory,
         itemType: currentSection?.type || "simple",
         cost8inch: cost8,
@@ -200,10 +222,15 @@ export async function syncCostingSheet() {
       return { success: false, error: "Parsed 0 items from sheet" }
     }
 
+    // Collapse duplicate canonicalNames before the upsert — see
+    // mergeDuplicateCostingRows() for why a single duplicate would otherwise abort
+    // the entire batch.
+    const { merged: deduped, collapsed, conflicts: clashes } = mergeDuplicateCostingRows(items)
+
     // Upsert in batches of 50
     const now = new Date()
-    for (let i = 0; i < items.length; i += 50) {
-      const batch = items.slice(i, i + 50).map((it) => ({
+    for (let i = 0; i < deduped.length; i += 50) {
+      const batch = deduped.slice(i, i + 50).map((it) => ({
         ...it,
         lastSyncedAt: now,
         updatedAt: now,
@@ -214,6 +241,7 @@ export async function syncCostingSheet() {
         .onConflictDoUpdate({
           target: dimCostingItem.canonicalName,
           set: {
+            brand: sql`EXCLUDED.brand`,
             category: sql`EXCLUDED.category`,
             itemType: sql`EXCLUDED."itemType"`,
             cost8inch: sql`EXCLUDED.cost8inch`,
@@ -230,14 +258,21 @@ export async function syncCostingSheet() {
         })
     }
 
+    // Surface duplicates in the sync log — a name listed twice with conflicting costs
+    // is a sheet error the owner needs to fix, not something to hide.
+    const notes: string[] = []
+    if (collapsed > 0) notes.push(`${collapsed} duplicate name${collapsed > 1 ? "s" : ""} merged`)
+    if (clashes.length) notes.push(`conflicting costs: ${clashes.slice(0, 5).join("; ")}`)
+
     await db.insert(syncLogs).values({
       source: "costing_sheet",
       status: "success",
-      recordsProcessed: items.length,
+      recordsProcessed: deduped.length,
+      errorMessage: notes.length ? notes.join(" — ") : null,
     })
 
     safeRevalidate("/dashboard/costing")
-    return { success: true, count: items.length }
+    return { success: true, count: deduped.length, duplicatesMerged: collapsed, conflicts: clashes }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error"
     await db.insert(syncLogs).values({

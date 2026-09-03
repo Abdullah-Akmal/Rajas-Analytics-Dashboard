@@ -1,7 +1,8 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { menuItems, orders, orderItems, deliveries, syncLogs, itemAlias, dimCostingItem, actionItems } from "@/lib/db/schema"
+import { menuItems, orders, orderItems, deliveries, syncLogs, itemAlias, dimCostingItem, actionItems, BRAND_DEFAULT } from "@/lib/db/schema"
+import { parseBrandBanner } from "@/lib/normalise/index"
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm"
 
 // Helper: cast date column and string to ::date for correct Postgres date comparison
@@ -46,6 +47,51 @@ function platformCondition(platformCol: any, platform?: string | null) {
 function platformItemCondition(orderIdCol: any, platform?: string | null) {
   if (!platform || platform === "all") return undefined
   return sql`EXISTS (SELECT 1 FROM orders po WHERE po."orderId" = ${orderIdCol} AND ${slug(sql`po.platform`)} = ${platform})`
+}
+
+// ─── Comparable-period clamp (spec §6/§11) ───────────────────────────────────
+// When the current window is still trading, both windows must be cut at the same
+// elapsed point in their final day, or a part-day reads as a collapse in revenue.
+// orderTime is a timestamp; the cast to Europe/London keeps BST/GMT honest.
+function elapsedClamp(timeCol: any, finalDay: string, cutoffSeconds: number | null) {
+  if (cutoffSeconds === null) return undefined
+  return sql`(
+    ${timeCol} IS NULL
+    OR (${timeCol} AT TIME ZONE 'Europe/London')::date < ${finalDay}::date
+    OR EXTRACT(EPOCH FROM (${timeCol} AT TIME ZONE 'Europe/London')::time) <= ${cutoffSeconds}
+  )`
+}
+
+// ─── Product Master slicers: brand / product type / category (spec §11) ──────
+// These dimensions live on product_master, not on order_items, so they filter via an
+// EXISTS on the alias→product-master chain. §11 is explicit that filters must change
+// the underlying CALCULATION — "do not calculate all brands together and merely hide
+// rows after calculation" — which is exactly what an EXISTS predicate does.
+export type PmFilters = { brand?: string; productType?: string; category?: string }
+
+function pmExists(itemNameCol: any, f?: PmFilters) {
+  if (!f) return undefined
+  const preds: any[] = []
+  if (f.brand && f.brand !== "all") preds.push(sql`pm.brand = ${f.brand}`)
+  if (f.productType && f.productType !== "all") preds.push(sql`pm."productType" = ${f.productType}`)
+  if (f.category && f.category !== "all") preds.push(sql`pm.category = ${f.category}`)
+  if (preds.length === 0) return undefined
+  return sql`EXISTS (
+    SELECT 1 FROM item_alias ia_f
+      JOIN product_master pm ON pm.id = ia_f."productMasterId"
+     WHERE lower(ia_f."normalizedRaw") = ${normKey(itemNameCol)}
+       AND ${sql.join(preds, sql` AND `)})`
+}
+
+/** Product-master slicers for a Drizzle order_items query. */
+function pmSlicers(f?: PmFilters) {
+  const c = pmExists(orderItems.itemName, f)
+  return c ? [c] : []
+}
+/** Same, as a raw ` AND …` fragment for hand-written SQL. Pass the table alias. */
+function rawPmSlicers(alias: string, f?: PmFilters) {
+  const c = pmExists(sql.raw(`${alias}."itemName"`), f)
+  return c ? sql` AND ${c}` : sql``
 }
 
 /** Slicer conditions for an ORDERS-based query (Drizzle condition array style). */
@@ -152,6 +198,7 @@ const costLookupRaw = sql`(
 // en-CA formats as ISO-style yyyy-MM-dd.
 const _ukDateFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" })
 const ukDateStr = (d: Date) => _ukDateFmt.format(d)
+import { comparablePeriod, pctChange, ptsChange } from "@/lib/analytics/periods"
 import { revalidatePath } from "next/cache"
 
 // ─── Google Sheets Sync ───────────────────────────────────────────────────
@@ -199,7 +246,8 @@ export async function syncGoogleSheets() {
     type ColMap = { cost8?: number; cost12?: number; costSolo?: number; costMeal?: number; primary?: number; hp?: number; ga?: number }
     type Section = { type: "pizza" | "solo_meal" | "simple"; cols: ColMap }
     const parseHeaderRow = (row: string[]): Section | null => {
-      const cells = row.map((c) => (c ?? "").toString().toLowerCase().trim())
+      // Whitespace-collapsed: the House of Peri header is "Meal  Cost" (two spaces).
+      const cells = row.map((c) => (c ?? "").toString().toLowerCase().replace(/\s+/g, " ").trim())
       const isHeader = cells.some((c) => c === "name" || c === "name " || c.includes("product"))
       if (!isHeader) return null
       const cols: ColMap = {}
@@ -223,6 +271,7 @@ export async function syncGoogleSheets() {
     // Walk rows, detect sections, extract items
     const itemsToInsert: Array<{
       itemName: string
+      brand: string
       costPrice: string | null
       sellingPriceHydePark: string | null
       sellingPriceGrandArcade: string | null
@@ -233,6 +282,7 @@ export async function syncGoogleSheets() {
 
     let currentCategory = "Uncategorised"
     let currentSection: Section | null = null
+    let currentBrand: string = BRAND_DEFAULT
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -244,6 +294,14 @@ export async function syncGoogleSheets() {
       // Detect category header row — col A is empty/category name, col B is empty or section title
       // These are rows like "Pizzas", "Wraps", "Garlic Breads" etc (single cell spanning header)
       if (colB === "" || colB === undefined) {
+        // Brand banners ("… Menu Costing") look like category headers — claim them first.
+        const banner = parseBrandBanner(colA)
+        if (banner) {
+          currentBrand = banner
+          currentCategory = "Uncategorised"
+          currentSection = null
+          continue
+        }
         if (colA && colA.length > 0 && colA !== "Product No." && isNaN(Number(colA)) && !colA.startsWith("£")) {
           currentCategory = colA
           currentSection = null
@@ -288,6 +346,7 @@ export async function syncGoogleSheets() {
 
       itemsToInsert.push({
         itemName: colB,
+        brand: currentBrand,
         costPrice,
         sellingPriceHydePark: priceHP,
         sellingPriceGrandArcade: priceGA,
@@ -679,14 +738,27 @@ export async function clearSyncData(scope: "orders" | "deliveries" | "all") {
 }
 
 // ─── Dashboard Data Fetchers ──────────────────────────────────────────────
-export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+/**
+ * Headline KPIs plus the comparable-period change the spec's Overview wireframe
+ * requires (§6: "KEEP + comparable-period change").
+ *
+ * The prior window is the same length immediately before, and when the current
+ * window is still trading BOTH are clamped to the same elapsed point in their final
+ * day — §14 requires that a partial day cannot produce a false decline.
+ */
+export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
+  const cp = comparablePeriod(startDate, endDate)
+
+  const measure = async (from: string, to: string) => {
   const orderDateFilter = [
-    sql`${orders.date}::date >= ${startDate}::date`,
-    sql`${orders.date}::date <= ${endDate}::date`,
+    sql`${orders.date}::date >= ${from}::date`,
+    sql`${orders.date}::date <= ${to}::date`,
     eq(orders.cancelled, false),
   ]
   if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
   orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
+  const oClamp = elapsedClamp(orders.orderTime, to, cp.cutoffSeconds)
+  if (oClamp) orderDateFilter.push(oClamp as any)
 
   const itemConditions: any[] = [
     sql`${orderItems.date}::date >= ${startDate}::date`,
@@ -713,16 +785,64 @@ export async function getOverviewKPIs(startDate: string, endDate: string, locati
       .select({
         totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
         totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${cl.unitCost}, 0)), 0)`,
+        // §4 missing-cost rule + §6 "Gross Profit — KEEP + cost coverage/confidence".
+        // Margin is computed over COSTED revenue only; counting an uncosted line at
+        // zero cost reports it as 100% gross profit and inflates the headline (it read
+        // 76.7% here against 63.5% on Item Profitability, which applies the rule).
+        costedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
+        uncostedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
       })
       .from(orderItems)
       .leftJoin(cl, sql`${cl.nk} = ${normKey(orderItems.itemName)}`)
       .where(and(...itemConditions)),
   ])
 
-  return { ...result[0], ...itemResult[0] }
+    return { ...result[0], ...itemResult[0] }
+  }
+
+  const [current, previous] = await Promise.all([
+    measure(startDate, endDate),
+    measure(cp.prevStart, cp.prevEnd),
+  ])
+
+  const n = (v: unknown) => Number(v ?? 0)
+  const curRevenue = n(current.totalRevenue)
+  const prevRevenue = n(previous.totalRevenue)
+  // Profit and margin are measured on the costed portion only — see costedRevenue above.
+  const curCosted = n(current.costedRevenue)
+  const prevCosted = n(previous.costedRevenue)
+  const curProfit = curCosted - n(current.totalCost)
+  const prevProfit = prevCosted - n(previous.totalCost)
+  const curMargin = curCosted > 0 ? (curProfit / curCosted) * 100 : 0
+  const prevMargin = prevCosted > 0 ? (prevProfit / prevCosted) * 100 : 0
+  const itemRevenue = curCosted + n(current.uncostedRevenue)
+  const costCoveragePct = itemRevenue > 0 ? (curCosted / itemRevenue) * 100 : 0
+
+  return {
+    ...current,
+    grossProfit: curProfit,
+    grossMarginPct: curMargin,
+    /** Share of item revenue that has a cost — the confidence behind the margin (§6). */
+    costCoveragePct,
+    uncostedRevenue: n(current.uncostedRevenue),
+    // §6 wireframe: every headline KPI carries its comparable-period change.
+    previous,
+    change: {
+      revenue: pctChange(curRevenue, prevRevenue),
+      orders: pctChange(n(current.totalOrders), n(previous.totalOrders)),
+      aov: pctChange(n(current.avgOrderValue), n(previous.avgOrderValue)),
+      grossProfit: pctChange(curProfit, prevProfit),
+      // Margin is a rate, so it moves in percentage POINTS, not percent.
+      grossMarginPts: ptsChange(curMargin, prevMargin),
+    },
+    comparable: {
+      from: cp.prevStart, to: cp.prevEnd, days: cp.days,
+      isPartial: cp.isPartial, cutoffSeconds: cp.cutoffSeconds,
+    },
+  }
 }
 
-export async function getItemProfitability(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+export async function getItemProfitability(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -733,6 +853,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
   conditions.push(...itemSlicers(channel, mode, platform))
+  conditions.push(...pmSlicers(pm))
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -741,6 +862,13 @@ export async function getItemProfitability(startDate: string, endDate: string, l
       itemName: orderItems.itemName,
       categoryName: sql<string>`COALESCE(${orderItems.categoryName}, ${menuItems.category}, 'Uncategorised')`,
       itemType: sql<string>`COALESCE(${orderItems.itemType}, ${menuItems.itemType}, 'Unknown')`,
+      // A line that resolves to no cost is shown as a MODIFIER rather than being
+      // dropped: it stays visible in every listing, but is excluded from margin
+      // aggregates so a missing cost can't masquerade as 100% gross profit.
+      // Note this is a *display* classification — item_alias.isModifier is left
+      // alone, because the Name Review queue filters those out and unmatched
+      // products must keep surfacing there for mapping.
+      costStatus: sql<string>`CASE WHEN MAX(${unit}) > 0 THEN 'costed' ELSE 'modifier' END`,
       orderFrequency: sql<number>`COUNT(DISTINCT ${orderItems.orderId})`,
       totalQty: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
       totalRevenue: sql<number>`COALESCE(SUM(${orderItems.amount}::numeric), 0)`,
@@ -759,7 +887,7 @@ export async function getItemProfitability(startDate: string, endDate: string, l
     .orderBy(desc(sql`SUM(${orderItems.amount}::numeric)`))
 }
 
-export async function getCategoryPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+export async function getCategoryPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const conditions: any[] = [
     dateGte(orderItems.date, startDate),
     dateLte(orderItems.date, endDate),
@@ -768,6 +896,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
   conditions.push(...itemSlicers(channel, mode, platform))
+  conditions.push(...pmSlicers(pm))
 
   const cl = costLookup()
   const unit = sql`COALESCE(${cl.unitCost}, 0)` // deduped per-unit cost, 0 when unmatched
@@ -789,7 +918,7 @@ export async function getCategoryPerformance(startDate: string, endDate: string,
 }
 
 // Top items per platform (order channel) — for the per-platform sales bar charts.
-export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8, channel?: string, mode?: string, platform?: string) {
+export async function getTopItemsByPlatform(startDate: string, endDate: string, location?: string, perPlatform = 8, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const locSql = location && location !== "all" ? sql` AND oi.location = ${location}` : sql``
   const chSql = rawItemSlicers("oi", channel, mode, platform)
   const raw = await db.execute<{ platform: string; itemName: string; revenue: string; qty: string }>(sql`
@@ -819,7 +948,7 @@ export async function getTopItemsByPlatform(startDate: string, endDate: string, 
     .sort((a, b) => b.total - a.total)
 }
 
-export async function getPlatformPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+export async function getPlatformPerformance(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
   conditions.push(...orderSlicers(channel, mode, platform))
@@ -1320,7 +1449,7 @@ export async function getModeBreakdown(startDate: string, endDate: string, locat
     .orderBy(desc(sql`SUM(${orders.totalAmount}::numeric)`))
 }
 
-export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+export async function getDailyRevenueTrend(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const conditions: any[] = [dateGte(orders.date, startDate), dateLte(orders.date, endDate), eq(orders.cancelled, false)]
   if (location && location !== "all") conditions.push(eq(orders.location, location))
   conditions.push(...orderSlicers(channel, mode, platform))
@@ -1402,7 +1531,7 @@ export async function getOrderLineValidation(startDate: string, endDate: string,
   }
 }
 
-export async function getBasketAnalysis(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string) {
+export async function getBasketAnalysis(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   // Raw SQL for subquery-based aggregations — Drizzle conditions can't be interpolated into FROM subqueries
   const locFilter = sql`${location && location !== "all" ? sql` AND oi.location = ${location}` : sql``}${rawItemSlicers("oi", channel, mode, platform)}`
   // Keep only real sellable products — drop modifier lines (dips/options/etc) and meal-upgrade
@@ -1418,6 +1547,7 @@ export async function getBasketAnalysis(startDate: string, endDate: string, loca
   ]
   if (location && location !== "all") conditions.push(eq(orderItems.location, location))
   conditions.push(...itemSlicers(channel, mode, platform))
+  conditions.push(...pmSlicers(pm))
 
   // All three are independent reads — fire them in parallel
   const [summaryRows, distRows, topItems] = await Promise.all([
@@ -2017,5 +2147,122 @@ export async function deleteActionItem(id: number) {
     return { success: true }
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+  }
+}
+
+/**
+ * How current the data is.
+ *
+ * The sync runs on a daily cron, so nobody should have to press a button — but a
+ * silently failing cron looks exactly like a quiet trading week. This surfaces the
+ * latest trading day we hold and when the last successful sync ran, so stale data is
+ * visible rather than mistaken for a downturn.
+ */
+export async function getDataFreshness() {
+  const [latest, lastSync] = await Promise.all([
+    db.execute<{ d: string | null }>(sql`
+      SELECT MAX(date)::text AS d FROM orders WHERE cancelled = false`),
+    db.execute<{ at: string | null; source: string | null; status: string | null }>(sql`
+      SELECT "syncedAt"::text AS at, source, status
+        FROM sync_logs
+       WHERE source IN ('presto', 'cron')
+       ORDER BY "syncedAt" DESC
+       LIMIT 1`),
+  ])
+
+  const latestOrderDate = latest.rows?.[0]?.d ?? null
+  const lastSyncAt = lastSync.rows?.[0]?.at ?? null
+  const today = ukDateStr(new Date())
+
+  // Days between the newest trading day we hold and today, in UK calendar terms.
+  const daysBehind = latestOrderDate
+    ? Math.round(
+        (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${latestOrderDate}T12:00:00Z`)) / 86_400_000,
+      )
+    : null
+
+  return {
+    latestOrderDate,
+    lastSyncAt,
+    daysBehind,
+    // Yesterday is normal — today's trade is still in progress and syncs overnight.
+    // Two days or more behind means a cron run has been missed.
+    isStale: daysBehind !== null && daysBehind > 1,
+  }
+}
+
+/**
+ * Which days inside the selected range actually hold data.
+ *
+ * The daily cron keeps a rolling last-7-days window current, so the default view needs
+ * no intervention. But when the CEO reaches further back, those days may never have
+ * been synced — and an unsynced day is indistinguishable from a closed one on screen.
+ * This reports the gap so the dashboard can fill it instead of showing a false zero.
+ */
+export async function getRangeCoverage(startDate: string, endDate: string, location?: string) {
+  const loc = location && location !== "all" ? location : null
+
+  // Days we hold orders for, within the requested window.
+  const present = await db.execute<{ d: string }>(sql`
+    SELECT DISTINCT date::text AS d
+      FROM orders
+     WHERE cancelled = false
+       AND date::date >= ${startDate}::date
+       AND date::date <= ${endDate}::date
+       ${loc ? sql` AND location = ${loc}` : sql``}`)
+  const have = new Set(present.rows.map((r) => r.d))
+
+  // Enumerate the window in UK calendar days, so the comparison lines up with how
+  // Presto stamps trading days.
+  const days: string[] = []
+  const startMs = Date.parse(`${startDate}T12:00:00Z`)
+  const endMs = Date.parse(`${endDate}T12:00:00Z`)
+  const todayStr = ukDateStr(new Date())
+  for (let t = startMs; t <= endMs; t += 86_400_000) {
+    const d = ukDateStr(new Date(t))
+    // Today is still trading and syncs overnight — never counted as a gap.
+    if (d < todayStr) days.push(d)
+  }
+
+  const missingDays = days.filter((d) => !have.has(d))
+  return {
+    totalDays: days.length,
+    daysWithData: days.length - missingDays.length,
+    missingDays,
+    hasGap: missingDays.length > 0,
+  }
+}
+
+/**
+ * Fetch the specific days a range is missing.
+ *
+ * Deliberately day-by-day across both locations, matching how the manual sync and the
+ * cron already work — Presto's endpoint is per-day-per-site. Capped so a wide range
+ * cannot kick off an unbounded backfill against a rate-limited API.
+ */
+export async function fillRangeGaps(missingDays: string[], maxDays = 31) {
+  const days = missingDays.slice(0, maxDays)
+  if (days.length === 0) return { success: true, synced: 0, orders: 0, skipped: 0 }
+
+  let orders = 0
+  let failed = 0
+  for (const day of days) {
+    for (const loc of ["HYDE_PARK", "GRAND_ARCADE"] as const) {
+      try {
+        const r = await syncPrestoData(day, loc)
+        if (r.success) orders += r.orders ?? 0
+        else failed++
+      } catch {
+        failed++
+      }
+    }
+  }
+
+  return {
+    success: failed === 0,
+    synced: days.length,
+    orders,
+    skipped: Math.max(0, missingDays.length - days.length),
+    failed,
   }
 }

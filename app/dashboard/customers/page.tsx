@@ -35,7 +35,7 @@ function webSegment(orderCount: number): { label: string; color: string } {
 
 export default function CustomersPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
   })
