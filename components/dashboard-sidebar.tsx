@@ -23,6 +23,7 @@ import {
   Gauge,
   Lightbulb,
   ClipboardCheck,
+  Settings2,
 } from "lucide-react"
 import {
   Sidebar,
@@ -44,9 +45,9 @@ const analyticsItems = [
   { label: "Item Profitability", href: "/dashboard/costing", icon: TrendingUp },
   { label: "Item Performance", href: "/dashboard/sales", icon: BarChart3 },
   { label: "Category Performance", href: "/dashboard/costing", icon: PieChart, secondary: true },
-  { label: "Platform Analytics", href: "/dashboard/platforms", icon: ShoppingCart },
-  { label: "Offers & Discounts", href: "/dashboard/offers", icon: Tag },
-  { label: "Offer Performance", href: "/dashboard/offer-performance", icon: Gauge },
+  { label: "Channel Performance", href: "/dashboard/platforms", icon: ShoppingCart },
+  { label: "Offers & Promotions", href: "/dashboard/offers", icon: Tag },
+  { label: "Offer Performance", href: "/dashboard/offer-performance", icon: Gauge, secondary: true },
 ]
 
 const operationsItems = [
@@ -62,7 +63,6 @@ const intelligenceItems = [
   { label: "Forecasting", href: "/dashboard/forecast", icon: LineChart },
   { label: "Alert System", href: "/dashboard/alerts", icon: Bell, badge: "Live", badgeVariant: "destructive" as const },
   { label: "Action Panel", href: "/dashboard/actions", icon: Zap, badge: "Weekly", badgeVariant: "default" as const },
-  { label: "Name Review", href: "/dashboard/review", icon: GitMerge, badge: "Queue", badgeVariant: "outline" as const },
 ]
 
 function NavItem({ item, pathname }: { item: { label: string; href: string; icon: React.ElementType; badge?: string; badgeVariant?: "default" | "destructive" | "outline"; secondary?: boolean }; pathname: string }) {
@@ -142,15 +142,17 @@ export function DashboardSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="px-4 py-3 border-t border-border">
+        {/* Analytics Settings, Product Mapping and Data Sync are tabs on one admin
+            page — the owner shouldn't hunt across three nav entries for them. */}
         <Link
-          href="/dashboard/sync"
+          href="/dashboard/settings"
           className={cn(
             "flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors",
-            pathname === "/dashboard/sync" && "text-primary"
+            pathname.startsWith("/dashboard/settings") && "text-primary"
           )}
         >
-          <RefreshCw className="size-3.5" />
-          <span>Data Sync</span>
+          <Settings2 className="size-3.5" />
+          <span>Settings</span>
         </Link>
         <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
           <MapPin className="size-3" />

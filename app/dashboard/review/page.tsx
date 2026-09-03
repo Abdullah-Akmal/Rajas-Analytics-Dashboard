@@ -168,7 +168,7 @@ type CostingItem = {
   matchedAliasCount: number
 }
 
-export default function ReviewPage() {
+export default function ReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [queue, setQueue]           = useState<QueueRow[]>([])
   const [canonicals, setCanonicals] = useState<Canonical[]>([])
   const [allItems, setAllItems]     = useState<CostingItem[]>([])
@@ -241,12 +241,14 @@ export default function ReviewPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-foreground">Item Name Review</h1>
-        <p className="text-sm text-muted-foreground">
-          Review unmatched POS names, map uncosted items, or browse all {loading ? "…" : allItems.length} costing items to manually assign POS mappings.
-        </p>
-      </div>
+      {!embedded && (
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold text-foreground">Item Name Review</h1>
+          <p className="text-sm text-muted-foreground">
+            Review unmatched POS names, map uncosted items, or browse all {loading ? "…" : allItems.length} costing items to manually assign POS mappings.
+          </p>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -35,7 +35,7 @@ function webSegment(orderCount: number): { label: string; color: string } {
 
 export default function CustomersPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
   })
@@ -86,7 +86,7 @@ export default function CustomersPage() {
         <p className="text-sm text-muted-foreground">Repeat &amp; new-customer analysis for identified website (Wix) customers</p>
       </div>
 
-      <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
+      <DateLocationFilter showChannel={false} onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
 
       {/* Data-coverage notice — customer identity only exists for own-website orders */}
       {!loading && coverage && (

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { getOfferAnalysis, getPlatformPerformance } from "@/app/actions/dashboard"
 import { DateLocationFilter } from "@/components/date-location-filter"
+import { OffersPromotionsPanel } from "@/components/analytics/offers-promotions-panel"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,9 +28,15 @@ function num(v: unknown) { return Number(v ?? 0) }
 
 export default function OffersPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [rows, setRows] = useState<OfferRow[]>([])
   const [platforms, setPlatforms] = useState<Awaited<ReturnType<typeof getPlatformPerformance>>>([])
@@ -39,8 +46,8 @@ export default function OffersPage() {
     setLoading(true)
     try {
       const [o, p] = await Promise.all([
-        getOfferAnalysis(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
+        getOfferAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
       setRows(o)
       setPlatforms(p)
@@ -81,12 +88,19 @@ export default function OffersPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-foreground">Offers & Discounts</h1>
-        <p className="text-sm text-muted-foreground">Discount impact analysis — understand which channels and periods carry the most discount cost</p>
+        <h1 className="text-2xl font-bold text-foreground">Offers &amp; Promotions</h1>
+        <p className="text-sm text-muted-foreground">Do offers generate profitable additional business, or simply give margin away?</p>
       </div>
 
       <DateLocationFilter onFilterChange={(f) => { setFilters(f); fetchData(f) }} />
 
+
+      {/* §10: Offers & Discounts and Offer Performance merged into one page. */}
+      <OffersPromotionsPanel
+        startDate={filters.startDate}
+        endDate={filters.endDate}
+        location={filters.location}
+      />
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[

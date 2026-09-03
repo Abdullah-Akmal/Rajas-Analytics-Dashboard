@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, Cell, CartesianGrid } from "recharts"
-import { format } from "date-fns"
+import { format, subDays} from "date-fns"
 import { Moon, Sun, Sunrise, Tag, Clock, Package, Layers, Info } from "lucide-react"
 
 type Item = Awaited<ReturnType<typeof getItemProfitability>>[number]
@@ -57,9 +57,15 @@ const PERIOD_COLOR = {
 
 export default function RecommendationsPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [hourly, setHourly] = useState<{ hour: number; totalOrders: number; totalRevenue: number; avgOrderValue: number }[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -70,9 +76,9 @@ export default function RecommendationsPage() {
     setLoading(true)
     try {
       const [h, i, b] = await Promise.all([
-        getHourlyBreakdown(f.startDate, f.endDate, f.location),
-        getItemProfitability(f.startDate, f.endDate, f.location),
-        getBasketAnalysis(f.startDate, f.endDate, f.location),
+        getHourlyBreakdown(f.startDate, f.endDate, f.location, null, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
       setHourly(h as any)
       setItems(i as Item[])

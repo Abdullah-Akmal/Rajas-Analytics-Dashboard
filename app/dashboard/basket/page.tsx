@@ -31,9 +31,15 @@ function num(v: unknown) { return Number(v ?? 0) }
 
 export default function BasketPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
   const [data, setData] = useState<BasketData | null>(null)
   const [validation, setValidation] = useState<Validation | null>(null)
@@ -44,9 +50,9 @@ export default function BasketPage() {
     setLoading(true)
     try {
       const [b, v, ins] = await Promise.all([
-        getBasketAnalysis(f.startDate, f.endDate, f.location),
-        getOrderLineValidation(f.startDate, f.endDate, f.location),
-        getBasketInsights(f.startDate, f.endDate, f.location),
+        getBasketAnalysis(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getOrderLineValidation(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getBasketInsights(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
       ])
       setData(b)
       setValidation(v)

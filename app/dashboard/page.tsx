@@ -1,9 +1,12 @@
 "use client"
 
 import { useState, useEffect, Fragment } from "react"
-import { getOverviewKPIs, getDailyRevenueTrend, getPlatformPerformance, getCategoryPerformance, getRevenueHeatmap, getItemProfitability } from "@/app/actions/dashboard"
+import { getOverviewKPIs, getDailyRevenueTrend, getPlatformPerformance, getCategoryPerformance, getRevenueHeatmap, getItemProfitability, getDataFreshness } from "@/app/actions/dashboard"
 import { KpiCard } from "@/components/kpi-card"
 import { DateLocationFilter } from "@/components/date-location-filter"
+import { WhatChanged, buildChangeRows } from "@/components/analytics/what-changed"
+import { RangeCoverageNotice } from "@/components/analytics/range-coverage-notice"
+import { getChannelPerformance } from "@/lib/analytics/channel"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, LineChart, Line, PieChart, Pie, Cell, Tooltip, Legend } from "recharts"
@@ -23,13 +26,44 @@ const chartConfig = {
   grandArcadeRevenue: { label: "Grand Arcade", color: "var(--color-chart-4)" },
 }
 
+/** Headline KPIs plus the §6 comparable-period change block. */
+type OverviewKpis = {
+  totalRevenue?: number
+  totalOrders?: number
+  avgOrderValue?: number
+  totalDiscount?: number
+  totalItemsSold?: number
+  totalCost?: number
+  grossProfit?: number
+  grossMarginPct?: number
+  costCoveragePct?: number
+  uncostedRevenue?: number
+  /** Movement against the equivalent prior window. Null when there is no baseline. */
+  change?: {
+    revenue: number | null; orders: number | null; aov: number | null
+    grossProfit: number | null; grossMarginPts: number | null
+  }
+  comparable?: { from: string; to: string; days: number; isPartial: boolean }
+}
+
 export default function DashboardPage() {
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     location: "all",
+    channel: "all",
+    mode: "all",
+    platform: "all",
+    brand: "all",
+    productType: "all",
+    category: "all",
   })
-  const [kpis, setKpis] = useState<Record<string, number> | null>(null)
+  const [kpis, setKpis] = useState<OverviewKpis | null>(null)
+  const [channel, setChannel] = useState<Awaited<ReturnType<typeof getChannelPerformance>> | null>(null)
+  const [freshness, setFreshness] = useState<Awaited<ReturnType<typeof getDataFreshness>> | null>(null)
+
+  // Freshness is independent of the selected range — it describes the data itself.
+  useEffect(() => { getDataFreshness().then(setFreshness).catch(() => setFreshness(null)) }, [])
   const [trend, setTrend] = useState<unknown[]>([])
   const [platforms, setPlatforms] = useState<unknown[]>([])
   const [categories, setCategories] = useState<unknown[]>([])
@@ -41,14 +75,15 @@ export default function DashboardPage() {
     setLoading(true)
     try {
       const [k, t, p, c, h, it] = await Promise.all([
-        getOverviewKPIs(f.startDate, f.endDate, f.location),
-        getDailyRevenueTrend(f.startDate, f.endDate, f.location),
-        getPlatformPerformance(f.startDate, f.endDate, f.location),
-        getCategoryPerformance(f.startDate, f.endDate, f.location),
-        getRevenueHeatmap(f.startDate, f.endDate, f.location),
-        getItemProfitability(f.startDate, f.endDate, f.location),
+        getOverviewKPIs(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getDailyRevenueTrend(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getPlatformPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getCategoryPerformance(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
+        getRevenueHeatmap(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform),
+        getItemProfitability(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform, { brand: f.brand, productType: f.productType, category: f.category }),
       ])
-      setKpis(k as Record<string, number>)
+      setKpis(k as OverviewKpis)
+      getChannelPerformance(f.startDate, f.endDate, f.location).then(setChannel).catch(() => setChannel(null))
       setTrend(t)
       setPlatforms(p)
       setCategories(c)
@@ -69,6 +104,28 @@ export default function DashboardPage() {
   const fmt = (n: number | undefined | null) => n ? `£${Number(n).toFixed(2)}` : "£0.00"
   const fmtN = (n: number | undefined | null) => n ? Number(n).toLocaleString() : "0"
 
+  // §6 comparison rule: name the window we are comparing against, and say plainly when
+  // the current one is still trading so a part-day is never read as a real decline.
+  const cmpLabel = kpis?.comparable
+    ? kpis.comparable.isPartial
+      ? `vs same elapsed window (${kpis.comparable.days}d)`
+      : `vs previous ${kpis.comparable.days}d`
+    : undefined
+
+  // §6 "What Changed?" — stated movements with their evidence, built from the same
+  // comparable-period figures the KPI cards show.
+  const topMover = channel?.rows
+    ?.filter((c) => c.changePct !== null)
+    .sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0))[0]
+  const changeRows = buildChangeRows({
+    revenueChangePct: kpis?.change?.revenue ?? null,
+    ordersChangePct: kpis?.change?.orders ?? null,
+    aovChangePct: kpis?.change?.aov ?? null,
+    marginChangePts: kpis?.change?.grossMarginPts ?? null,
+    directPctChangePts: channel?.totals.directPctChangePts ?? null,
+    topChannelMover: topMover ? { label: topMover.label, changePct: topMover.changePct } : null,
+  })
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -87,25 +144,39 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* §6: every headline KPI carries its comparable-period change. */}
           <KpiCard
             title="Total Revenue"
             value={fmt(kpis?.totalRevenue)}
+            trend={kpis?.change?.revenue ?? undefined}
+            trendLabel={cmpLabel}
             icon={<PoundSterling className="size-4" />}
             accent="default"
           />
           <KpiCard
             title="Total Orders"
             value={fmtN(kpis?.totalOrders)}
+            trend={kpis?.change?.orders ?? undefined}
+            trendLabel={cmpLabel}
             icon={<ShoppingBag className="size-4" />}
           />
           <KpiCard
             title="Avg Order Value"
             value={fmt(kpis?.avgOrderValue)}
+            trend={kpis?.change?.aov ?? undefined}
+            trendLabel={cmpLabel}
             icon={<TrendingUp className="size-4" />}
           />
           <KpiCard
             title="Gross Profit"
-            value={fmt(kpis?.totalRevenue && kpis?.totalCost ? kpis.totalRevenue - kpis.totalCost : kpis?.totalRevenue)}
+            value={fmt(kpis?.grossProfit ?? kpis?.totalRevenue)}
+            subValue={
+              kpis?.grossMarginPct !== undefined
+                ? `${kpis.grossMarginPct.toFixed(1)}% margin · ${(kpis.costCoveragePct ?? 0).toFixed(0)}% cost coverage`
+                : undefined
+            }
+            trend={kpis?.change?.grossProfit ?? undefined}
+            trendLabel={cmpLabel}
             icon={<Percent className="size-4" />}
             accent="success"
           />
@@ -122,6 +193,30 @@ export default function DashboardPage() {
           />
         </div>
       )}
+
+      {/* Data currency. The sync is automatic (daily cron) so nobody presses a button —
+          but a silently failed run must not be mistaken for a quiet trading week. */}
+      {freshness?.latestOrderDate && (
+        <p className={`text-xs ${freshness.isStale ? "text-destructive" : "text-muted-foreground"}`}>
+          {freshness.isStale ? "⚠ " : ""}
+          Data current to {freshness.latestOrderDate}
+          {freshness.daysBehind !== null && freshness.daysBehind > 1
+            ? ` — ${freshness.daysBehind} days behind, the overnight sync may have failed`
+            : " · syncs automatically overnight"}
+        </p>
+      )}
+
+      {/* Keeps the DATA in step with the selected range, not just the query: reaching
+          back to an unsynced period fetches it rather than rendering false zeros. */}
+      <RangeCoverageNotice
+        startDate={filters.startDate}
+        endDate={filters.endDate}
+        location={filters.location}
+        onFilled={() => { fetchData(filters); getDataFreshness().then(setFreshness).catch(() => {}) }}
+      />
+
+      {/* §6 ADD: "What Changed?" — the decision-first read on the period. */}
+      <WhatChanged rows={changeRows} comparableLabel={cmpLabel} />
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -338,73 +433,8 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Revenue Heatmap — day × hour */}
-      <Card>
-        <CardHeader className="pb-2 text-center">
-          <CardTitle className="text-sm font-semibold">Sales Heatmap — Hour × Day</CardTitle>
-          <CardDescription className="text-xs">Order count by hour (rows) and weekday (columns), UK time — spot peak windows for staffing & offers</CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {loading ? <Skeleton className="h-56 w-full" /> : heatmap.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">No timestamped sales — re-sync Presto</div>
-          ) : (() => {
-            // Columns = weekdays (Mon → Sun); DOW values from Postgres EXTRACT(DOW): Sun=0..Sat=6
-            const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-            const DAY_DOW = [1, 2, 3, 4, 5, 6, 0]
-            // Rows = trading window in order: 11:00 → 04:00 next day
-            const HOURS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4]
-            const map = new Map<string, { rev: number; ord: number }>()
-            let maxOrd = 0
-            for (const c of heatmap) {
-              const ord = Number(c.orders)
-              map.set(`${c.dow}-${c.hour}`, { rev: Number(c.revenue), ord })
-              if (ord > maxOrd) maxOrd = ord
-            }
-            // Full clock label, e.g. 11 AM, 12 PM, 1 PM, 12 AM
-            const fmtH = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`
-            return (
-              <div className="min-w-[380px]">
-                <div className="grid" style={{ gridTemplateColumns: `56px repeat(${DAY_LABELS.length}, 1fr)` }}>
-                  <div />
-                  {DAY_LABELS.map((day) => (
-                    <div key={day} className="text-[10px] font-medium text-muted-foreground text-center pb-1">{day}</div>
-                  ))}
-                  {HOURS.map((h) => (
-                    <Fragment key={h}>
-                      <div className="text-[10px] text-muted-foreground flex items-center justify-end pr-2">{fmtH(h)}</div>
-                      {DAY_DOW.map((dow, i) => {
-                        const cell = map.get(`${dow}-${h}`)
-                        const ord = cell?.ord ?? 0
-                        const rev = cell?.rev ?? 0
-                        const intensity = maxOrd > 0 ? ord / maxOrd : 0
-                        return (
-                          <div
-                            key={dow}
-                            title={`${DAY_LABELS[i]} ${fmtH(h)} — ${ord} ${ord === 1 ? "order" : "orders"} · £${rev.toFixed(2)}`}
-                            className="aspect-square m-[1px] rounded-sm flex items-center justify-center"
-                            style={{
-                              background: ord > 0 ? `color-mix(in oklab, var(--color-chart-1) ${Math.round(15 + intensity * 85)}%, transparent)` : "var(--secondary)",
-                            }}
-                          >
-                            {ord > 0 && <span className="text-[9px] text-foreground/80">{ord}</span>}
-                          </div>
-                        )
-                      })}
-                    </Fragment>
-                  ))}
-                </div>
-                <div className="flex items-center justify-end gap-1.5 mt-2 text-[10px] text-muted-foreground">
-                  <span>Fewer</span>
-                  {[0.15, 0.4, 0.65, 0.9].map((i) => (
-                    <span key={i} className="size-3 rounded-sm" style={{ background: `color-mix(in oklab, var(--color-chart-1) ${Math.round(i * 100)}%, transparent)` }} />
-                  ))}
-                  <span>More orders</span>
-                </div>
-              </div>
-            )
-          })()}
-        </CardContent>
-      </Card>
+      {/* §6: the Sales Heatmap MOVES to the staffing/demand system — it already
+          lives on Hourly Demand, so Overview no longer duplicates it. */}
 
       {/* Quick Status */}
       <Card>

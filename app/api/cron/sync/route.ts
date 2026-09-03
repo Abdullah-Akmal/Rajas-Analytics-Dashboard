@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { syncPrestoData, syncShipdayData } from "@/app/actions/dashboard"
 
-// Weekly data sync (last 7 days) for Presto (both locations) + Shipday.
+// DAILY data sync over a rolling last-7-days window for Presto (both locations) +
+// Shipday. The window overlaps deliberately: a missed or failed run self-heals on
+// the next one, and late-arriving platform orders get picked up.
 // Designed to be triggered by a scheduler (Vercel Cron, GitHub Actions, cron-job.org,
 // Windows Task Scheduler, etc.). Protected by CRON_SECRET so it can't be run by anyone
 // who guesses the URL — the caller must send `Authorization: Bearer <CRON_SECRET>`.
