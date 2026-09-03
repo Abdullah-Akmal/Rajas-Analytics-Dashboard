@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "comment": "Daily 04:00 UTC. The route syncs a rolling last-7-days window, so a single missed run self-heals on the next one. Weekly left data up to 6 days stale, which made the dashboard look empty and forced manual syncing.",
       "path": "/api/cron/sync",
       "schedule": "0 4 * * *"
     }
