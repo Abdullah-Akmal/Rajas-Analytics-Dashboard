@@ -105,7 +105,7 @@ export async function getItemPerformance(
       FROM order_items oi
       JOIN item_alias ia
         ON lower(ia."normalizedRaw") = regexp_replace(regexp_replace(regexp_replace(
-             lower(btrim(oi."itemName")), '\\s+', ' ', 'g'),
+             lower(btrim(oi."itemName")), '[[:space:]]+', ' ', 'g'),
              '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g')
       JOIN product_master pm ON pm.id = ia."productMasterId"
      WHERE oi.cancelled = false

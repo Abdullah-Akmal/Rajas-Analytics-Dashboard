@@ -614,7 +614,7 @@ export async function getUncostedItems() {
     matchMethod: string | null
   }>(sql`
     WITH oi AS (
-      SELECT regexp_replace(regexp_replace(regexp_replace(lower(btrim("itemName")), '\\s+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g') AS k,
+      SELECT regexp_replace(regexp_replace(regexp_replace(lower(btrim("itemName")), '[[:space:]]+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g') AS k,
              SUM(amount::numeric) AS revenue,
              SUM(qty::numeric)    AS qty,
              (array_agg("categoryName" ORDER BY amount::numeric DESC))[1] AS pos_cat

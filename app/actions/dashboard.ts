@@ -134,11 +134,20 @@ function rawOrderSlicers(alias: string, channel?: string, mode?: string, platfor
 // messy POS spellings/sizes/initials the Name Review screen maps by hand).
 //
 // normKey() replicates lib/normalise normalizeRaw() in SQL: lower + trim +
-// whitespace-collapse + the (tiny) typo map. Because both sides are lowercased and
+// whitespace-collapse + the (tiny) typo map.
+//
+// WHITESPACE MUST BE [[:space:]], NEVER \s.
+// In this Postgres, regexp_replace(x, '\s+', ' ', 'g') replaces the LETTER "s",
+// not whitespace — verified directly:
+//     regexp_replace('Full House Chicken', '\s+', '_', 'g') -> 'Full Hou_e Chicken'
+// That silently broke this join for every product name containing an "s", which was
+// 319 of 563 aliases: only 47% of revenue joined to a cost, and brand/product filters
+// saw less than a third of trade. The \m / \M word-boundary escapes below DO work;
+// it is specifically the \s class shorthand that does not. Because both sides are lowercased and
 // the typo fixes are applied identically, LOWER(item_alias."normalizedRaw") equals
 // normKey(order_items."itemName") for every mapped line — an exact join.
 const normKey = (col: any) =>
-  sql`regexp_replace(regexp_replace(regexp_replace(lower(btrim(${col})), '\\s+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g')`
+  sql`regexp_replace(regexp_replace(regexp_replace(lower(btrim(${col})), '[[:space:]]+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g')`
 
 // ── Deduped per-key cost lookup ──────────────────────────────────────────────
 // item_alias stores the RAW POS spelling, so several near-duplicate rows (case /
