@@ -66,15 +66,40 @@ export type ChannelPerformanceResult = {
   caveats: string[]
 }
 
+export type ChannelPmFilters = { brand?: string; productType?: string; category?: string }
+
+/** Product-level predicate for order_items (alias `oi`), used by the EXISTS below. */
+function pmPredicate(pm?: ChannelPmFilters) {
+  const parts: string[] = []
+  if (pm?.brand && pm.brand !== "all") parts.push(`pm.brand = '${pm.brand.replace(/'/g, "''")}'`)
+  if (pm?.productType && pm.productType !== "all") parts.push(`pm."productType" = '${pm.productType.replace(/'/g, "''")}'`)
+  if (pm?.category && pm.category !== "all") parts.push(`pm.category = '${pm.category.replace(/'/g, "''")}'`)
+  return parts
+}
+
 export async function getChannelPerformance(
   startDate: string,
   endDate: string,
   location?: string,
+  pm?: ChannelPmFilters,
 ): Promise<ChannelPerformanceResult> {
   const setting = await getSettingsLookup()
   const cp = comparablePeriod(startDate, endDate)
   const store = location && location !== "all" ? location : null
   const caveats: string[] = []
+
+  // Brand / product type / category live on product_master, so they filter through an
+  // EXISTS on the order's lines — §11 requires the CALCULATION to change, not the display.
+  const pmParts = pmPredicate(pm)
+  const pmOrderSql = pmParts.length
+    ? sql.raw(` AND EXISTS (SELECT 1 FROM order_items pi
+         JOIN item_alias pia ON lower(pia."normalizedRaw") = regexp_replace(regexp_replace(regexp_replace(
+              lower(btrim(pi."itemName")), '[[:space:]]+', ' ', 'g'),
+              '\msundays?\M', 'sundae', 'g'), '\mperi peri\M', 'piri piri', 'g')
+         JOIN product_master pm ON pm.id = pia."productMasterId"
+        WHERE pi."orderId" = o."orderId" AND pi.cancelled = false AND ${pmParts.join(" AND ")})`)
+    : sql``
+  const pmItemSql = pmParts.length ? sql.raw(` AND ${pmParts.join(" AND ")}`) : sql``
 
   const measure = async (from: string, to: string) => {
     const locSql = store ? sql` AND o.location = ${store}` : sql``
@@ -92,7 +117,7 @@ export async function getChannelPerformance(
          WHERE o.cancelled = false
            AND o.date::date >= ${from}::date
            AND o.date::date <= ${to}::date
-           ${locSql}
+           ${locSql}${pmOrderSql}
       ),
       cost AS (
         SELECT lower(COALESCE(oi."orderChannel", 'unknown')) AS channel,
@@ -107,7 +132,7 @@ export async function getChannelPerformance(
            AND oi.amount::numeric > 0
            AND oi.date::date >= ${from}::date
            AND oi.date::date <= ${to}::date
-           ${store ? sql` AND oi.location = ${store}` : sql``}
+           ${store ? sql` AND oi.location = ${store}` : sql``}${pmItemSql}
          GROUP BY 1
       )
       SELECT ord.channel                                   AS channel,

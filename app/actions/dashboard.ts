@@ -758,55 +758,93 @@ export async function clearSyncData(scope: "orders" | "deliveries" | "all") {
 export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const cp = comparablePeriod(startDate, endDate)
 
+  // Brand, product type and category are ITEM-level dimensions — they live on
+  // product_master, not on the order. So when one is active the headline KPIs must be
+  // computed from the matching order LINES; summing whole order totals would report a
+  // mixed order entirely under whichever brand was selected, which is why the Overview
+  // showed identical figures for Rajas and House of Peri Peri.
+  const pmActive = Boolean(
+    pm && (
+      (pm.brand && pm.brand !== "all") ||
+      (pm.productType && pm.productType !== "all") ||
+      (pm.category && pm.category !== "all")
+    ),
+  )
+
   const measure = async (from: string, to: string) => {
-  const orderDateFilter = [
-    sql`${orders.date}::date >= ${from}::date`,
-    sql`${orders.date}::date <= ${to}::date`,
-    eq(orders.cancelled, false),
-  ]
-  if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
-  orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
-  const oClamp = elapsedClamp(orders.orderTime, to, cp.cutoffSeconds)
-  if (oClamp) orderDateFilter.push(oClamp as any)
+    const orderDateFilter: any[] = [
+      sql`${orders.date}::date >= ${from}::date`,
+      sql`${orders.date}::date <= ${to}::date`,
+      eq(orders.cancelled, false),
+    ]
+    if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
+    orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
+    const oClamp = elapsedClamp(orders.orderTime, to, cp.cutoffSeconds)
+    if (oClamp) orderDateFilter.push(oClamp as any)
 
-  const itemConditions: any[] = [
-    sql`${orderItems.date}::date >= ${startDate}::date`,
-    sql`${orderItems.date}::date <= ${endDate}::date`,
-    eq(orderItems.cancelled, false),
-    sql`${orderItems.amount}::numeric > 0`,
-  ]
-  if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
-  itemConditions.push(...itemSlicers(channel, mode, platform))
+    const itemConditions: any[] = [
+      sql`${orderItems.date}::date >= ${from}::date`,
+      sql`${orderItems.date}::date <= ${to}::date`,
+      eq(orderItems.cancelled, false),
+      sql`${orderItems.amount}::numeric > 0`,
+    ]
+    if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
+    itemConditions.push(...itemSlicers(channel, mode, platform))
+    itemConditions.push(...pmSlicers(pm))
+    // order_items carries no timestamp, so the partial-day clamp is applied through
+    // the parent order — otherwise a part-day would compare against a whole one.
+    if (cp.cutoffSeconds !== null) {
+      itemConditions.push(sql`EXISTS (
+        SELECT 1 FROM orders po
+         WHERE po."orderId" = ${orderItems.orderId}
+           AND ${elapsedClamp(sql`po."orderTime"`, to, cp.cutoffSeconds)})`)
+    }
 
-  // Run both aggregates in parallel — independent queries, no reason to await serially
-  const cl = costLookup()
-  const [result, itemResult] = await Promise.all([
-    db
-      .select({
-        totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
-        totalOrders: sql<number>`COUNT(*)`,
-        avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
-        totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
-      })
-      .from(orders)
-      .where(and(...orderDateFilter)),
-    db
-      .select({
-        totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
-        totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${cl.unitCost}, 0)), 0)`,
-        // §4 missing-cost rule + §6 "Gross Profit — KEEP + cost coverage/confidence".
-        // Margin is computed over COSTED revenue only; counting an uncosted line at
-        // zero cost reports it as 100% gross profit and inflates the headline (it read
-        // 76.7% here against 63.5% on Item Profitability, which applies the rule).
-        costedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
-        uncostedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
-      })
-      .from(orderItems)
-      .leftJoin(cl, sql`${cl.nk} = ${normKey(orderItems.itemName)}`)
-      .where(and(...itemConditions)),
-  ])
+    const cl = costLookup()
+    const [result, itemResult] = await Promise.all([
+      db
+        .select({
+          totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+          totalOrders: sql<number>`COUNT(*)`,
+          avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+          totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
+        })
+        .from(orders)
+        .where(and(...orderDateFilter)),
+      db
+        .select({
+          totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
+          totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${cl.unitCost}, 0)), 0)`,
+          // §4 missing-cost rule + §6 "Gross Profit — KEEP + cost coverage/confidence".
+          // Margin is computed over COSTED revenue only; counting an uncosted line at
+          // zero cost reports it as 100% gross profit and inflates the headline.
+          costedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
+          uncostedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
+          // Used as the headline figures whenever a product-level filter is active.
+          itemRevenue: sql<number>`COALESCE(SUM(${orderItems.amount}::numeric), 0)`,
+          itemDiscount: sql<number>`COALESCE(SUM(${orderItems.discount}::numeric), 0)`,
+          itemOrders: sql<number>`COUNT(DISTINCT ${orderItems.orderId})`,
+        })
+        .from(orderItems)
+        .leftJoin(cl, sql`${cl.nk} = ${normKey(orderItems.itemName)}`)
+        .where(and(...itemConditions)),
+    ])
 
-    return { ...result[0], ...itemResult[0] }
+    const o = result[0]
+    const i = itemResult[0]
+    if (!pmActive) return { ...o, ...i }
+
+    // Product-filtered view: revenue, orders and discount come from the matching lines.
+    const itemRevenue = Number(i.itemRevenue ?? 0)
+    const itemOrders = Number(i.itemOrders ?? 0)
+    return {
+      ...o,
+      ...i,
+      totalRevenue: itemRevenue,
+      totalOrders: itemOrders,
+      avgOrderValue: itemOrders > 0 ? itemRevenue / itemOrders : 0,
+      totalDiscount: Number(i.itemDiscount ?? 0),
+    }
   }
 
   const [current, previous] = await Promise.all([

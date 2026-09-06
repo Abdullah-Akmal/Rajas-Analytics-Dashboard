@@ -40,8 +40,11 @@ function marginStatus(r: Row, target: number, amber: number): {
 }
 
 export function ProductsRequiringAttention({
-  startDate, endDate, location, brand,
-}: { startDate: string; endDate: string; location: string; brand: string }) {
+  startDate, endDate, location, brand, productType, category,
+}: {
+  startDate: string; endDate: string; location: string; brand: string
+  productType?: string; category?: string
+}) {
   const [data, setData] = useState<ItemPerformanceResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
@@ -49,11 +52,11 @@ export function ProductsRequiringAttention({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getItemPerformance(startDate, endDate, location, brand)
+    getItemPerformance(startDate, endDate, location, brand, productType, category)
       .then((r) => { if (!cancelled) { setData(r); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [startDate, endDate, location, brand])
+  }, [startDate, endDate, location, brand, productType, category])
 
   if (loading) return <Skeleton className="h-64 w-full" />
   if (!data) return <p className="text-sm text-muted-foreground">No data.</p>

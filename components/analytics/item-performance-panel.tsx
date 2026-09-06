@@ -24,8 +24,11 @@ const money = (n: number) => `£${n.toFixed(2)}`
 const pct = (n: number | null) => (n === null ? "N/A" : `${(n * 100).toFixed(0)}%`)
 
 export function ItemPerformancePanel({
-  startDate, endDate, location, brand,
-}: { startDate: string; endDate: string; location: string; brand: string }) {
+  startDate, endDate, location, brand, productType, category,
+}: {
+  startDate: string; endDate: string; location: string; brand: string
+  productType?: string; category?: string
+}) {
   const [data, setData] = useState<ItemPerformanceResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<PerformanceStatus | "all">("all")
@@ -33,11 +36,11 @@ export function ItemPerformancePanel({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getItemPerformance(startDate, endDate, location, brand)
+    getItemPerformance(startDate, endDate, location, brand, productType, category)
       .then((r) => { if (!cancelled) { setData(r); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [startDate, endDate, location, brand])
+  }, [startDate, endDate, location, brand, productType, category])
 
   if (loading) {
     return (

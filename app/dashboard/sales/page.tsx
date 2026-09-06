@@ -221,6 +221,8 @@ export default function SalesPage() {
             endDate={filters.endDate}
             location={filters.location}
             brand={filters.brand}
+            productType={filters.productType}
+            category={filters.category}
           />
         </TabsContent>
 

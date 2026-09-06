@@ -57,6 +57,8 @@ export async function getItemPerformance(
   endDate: string,
   location?: string,
   brand?: string,
+  productType?: string,
+  category?: string,
 ): Promise<ItemPerformanceResult> {
   const setting = await getSettingsLookup()
   const store = location && location !== "all" ? location : null
@@ -69,6 +71,12 @@ export async function getItemPerformance(
 
   const locSql = store ? sql` AND oi.location = ${store}` : sql``
   const brandSql = brand && brand !== "all" ? sql` AND pm.brand = ${brand}` : sql``
+  // Category narrows within the §8 eligible set; product type replaces the default
+  // solo/meal/deal restriction when the user picks one explicitly.
+  const categorySql = category && category !== "all" ? sql` AND pm.category = ${category}` : sql``
+  const typeSql = productType && productType !== "all"
+    ? sql` AND pm."productType" = ${productType}`
+    : sql` AND pm."productType" IN ('solo', 'meal', 'deal')`
 
   // Total eligible orders in the window — the denominator for penetration.
   const eligible = await db.execute<{ n: string }>(sql`
@@ -112,9 +120,8 @@ export async function getItemPerformance(
        AND oi.amount::numeric > 0
        AND oi.date::date >= ${startDate}::date
        AND oi.date::date <= ${endDate}::date
-       -- §8 eligible core products only
-       AND pm."productType" IN ('solo', 'meal', 'deal')
-       ${locSql}${brandSql}
+       ${typeSql}
+       ${locSql}${brandSql}${categorySql}
      GROUP BY pm.id, pm."displayName", pm.brand, pm.category, pm."productType"`)
 
   const measured = rows.rows.map((r) => {

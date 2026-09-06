@@ -25,19 +25,22 @@ function Delta({ value, unit = "%" }: { value: number | null | undefined; unit?:
 }
 
 export function ChannelPerformancePanel({
-  startDate, endDate, location,
-}: { startDate: string; endDate: string; location: string }) {
+  startDate, endDate, location, brand, productType, category,
+}: {
+  startDate: string; endDate: string; location: string
+  brand?: string; productType?: string; category?: string
+}) {
   const [data, setData] = useState<ChannelPerformanceResult | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getChannelPerformance(startDate, endDate, location)
+    getChannelPerformance(startDate, endDate, location, { brand, productType, category })
       .then((r) => { if (!cancelled) { setData(r); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [startDate, endDate, location])
+  }, [startDate, endDate, location, brand, productType, category])
 
   if (loading) {
     return (

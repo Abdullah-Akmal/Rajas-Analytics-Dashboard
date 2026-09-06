@@ -107,6 +107,9 @@ export default function PlatformsPage() {
         startDate={filters.startDate}
         endDate={filters.endDate}
         location={filters.location}
+        brand={filters.brand}
+        productType={filters.productType}
+        category={filters.category}
       />
 
       {/* KPI Cards */}
