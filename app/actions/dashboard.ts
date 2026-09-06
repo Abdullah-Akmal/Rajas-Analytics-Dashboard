@@ -2313,3 +2313,52 @@ export async function fillRangeGaps(missingDays: string[], maxDays = 31) {
     failed,
   }
 }
+
+/**
+ * How much revenue can be attributed to a brand at all.
+ *
+ * Brand, product type and category resolve through the Product Master, so a POS line
+ * whose name maps to no product belongs to no brand and is excluded from EVERY brand
+ * view. That makes the brand totals fail to sum to the unfiltered total — which looks
+ * like a broken filter unless the shortfall is stated. This reports it so the gap is
+ * visible and actionable rather than mysterious.
+ */
+export async function getBrandCoverage(
+  startDate: string, endDate: string,
+  location?: string, channel?: string, mode?: string, platform?: string,
+) {
+  const conditions: any[] = [
+    dateGte(orderItems.date, startDate),
+    dateLte(orderItems.date, endDate),
+    eq(orderItems.cancelled, false),
+    sql`${orderItems.amount}::numeric > 0`,
+  ]
+  if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  conditions.push(...itemSlicers(channel, mode, platform))
+
+  const mapped = sql`EXISTS (
+    SELECT 1 FROM item_alias ia_c
+      JOIN product_master pm_c ON pm_c.id = ia_c."productMasterId"
+     WHERE lower(ia_c."normalizedRaw") = ${normKey(orderItems.itemName)})`
+
+  const r = await db
+    .select({
+      totalRevenue: sql<number>`COALESCE(SUM(${orderItems.amount}::numeric), 0)`,
+      mappedRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${mapped} THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
+      unmappedRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${mapped} THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
+      unmappedItems: sql<number>`COUNT(DISTINCT CASE WHEN ${mapped} THEN NULL ELSE ${orderItems.itemName} END)`,
+    })
+    .from(orderItems)
+    .where(and(...conditions))
+
+  const row = r[0]
+  const total = Number(row?.totalRevenue ?? 0)
+  const unmapped = Number(row?.unmappedRevenue ?? 0)
+  return {
+    totalRevenue: total,
+    mappedRevenue: Number(row?.mappedRevenue ?? 0),
+    unmappedRevenue: unmapped,
+    unmappedItems: Number(row?.unmappedItems ?? 0),
+    coveragePct: total > 0 ? ((total - unmapped) / total) * 100 : 0,
+  }
+}

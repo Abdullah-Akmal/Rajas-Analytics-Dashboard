@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, Fragment } from "react"
-import { getOverviewKPIs, getDailyRevenueTrend, getPlatformPerformance, getCategoryPerformance, getRevenueHeatmap, getItemProfitability, getDataFreshness } from "@/app/actions/dashboard"
+import { getOverviewKPIs, getDailyRevenueTrend, getPlatformPerformance, getCategoryPerformance, getRevenueHeatmap, getItemProfitability, getDataFreshness, getBrandCoverage } from "@/app/actions/dashboard"
 import { KpiCard } from "@/components/kpi-card"
+import Link from "next/link"
 import { DateLocationFilter } from "@/components/date-location-filter"
 import { WhatChanged, buildChangeRows } from "@/components/analytics/what-changed"
 import { RangeCoverageNotice } from "@/components/analytics/range-coverage-notice"
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const [kpis, setKpis] = useState<OverviewKpis | null>(null)
   const [channel, setChannel] = useState<Awaited<ReturnType<typeof getChannelPerformance>> | null>(null)
   const [freshness, setFreshness] = useState<Awaited<ReturnType<typeof getDataFreshness>> | null>(null)
+  const [coverage, setCoverage] = useState<Awaited<ReturnType<typeof getBrandCoverage>> | null>(null)
 
   // Freshness is independent of the selected range — it describes the data itself.
   useEffect(() => { getDataFreshness().then(setFreshness).catch(() => setFreshness(null)) }, [])
@@ -84,6 +86,8 @@ export default function DashboardPage() {
       ])
       setKpis(k as OverviewKpis)
       getChannelPerformance(f.startDate, f.endDate, f.location).then(setChannel).catch(() => setChannel(null))
+      getBrandCoverage(f.startDate, f.endDate, f.location, f.channel, f.mode, f.platform)
+        .then(setCoverage).catch(() => setCoverage(null))
       setTrend(t)
       setPlatforms(p)
       setCategories(c)
@@ -214,6 +218,23 @@ export default function DashboardPage() {
         location={filters.location}
         onFilled={() => { fetchData(filters); getDataFreshness().then(setFreshness).catch(() => {}) }}
       />
+
+      {/* Brand/type/category resolve through the Product Master, so unmapped lines
+          belong to no brand. State the shortfall — otherwise the brand totals silently
+          fail to add up to the unfiltered total. */}
+      {coverage && coverage.unmappedRevenue > 0 &&
+        (filters.brand !== "all" || filters.productType !== "all" || filters.category !== "all") && (
+        <p className="text-xs text-[oklch(0.75_0.18_75)]">
+          Brand, product type and category cover {coverage.coveragePct.toFixed(0)}% of revenue.
+          £{coverage.unmappedRevenue.toFixed(2)} across {coverage.unmappedItems} product
+          {coverage.unmappedItems === 1 ? "" : "s"} is not mapped to any product yet, so it is
+          excluded from every brand — which is why the brand figures do not sum to the
+          unfiltered total.{" "}
+          <Link href="/dashboard/settings" className="underline hover:no-underline">
+            Map them in Settings → Product Mapping
+          </Link>
+        </p>
+      )}
 
       {/* §6 ADD: "What Changed?" — the decision-first read on the period. */}
       <WhatChanged rows={changeRows} comparableLabel={cmpLabel} />
