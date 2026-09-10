@@ -20,13 +20,13 @@ export function KpiCard({ title, value, subValue, trend, trendLabel, icon, class
   const trendColor = trend === undefined || trend === 0
     ? "text-muted-foreground"
     : trend > 0
-    ? "text-[oklch(0.7_0.15_150)]"
+    ? "text-success"
     : "text-destructive"
 
   const borderColor = {
     default: "border-border",
-    success: "border-[oklch(0.7_0.15_150)]",
-    warning: "border-[oklch(0.75_0.18_75)]",
+    success: "border-success",
+    warning: "border-warning",
     danger: "border-destructive",
   }[accent]
 
@@ -35,9 +35,9 @@ export function KpiCard({ title, value, subValue, trend, trendLabel, icon, class
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground truncate">{title}</p>
+            <p className="text-sm text-muted-foreground truncate">{title}</p>
             <p className="text-2xl font-bold text-foreground mt-1 leading-tight">{value}</p>
-            {subValue && <p className="text-xs text-muted-foreground mt-0.5">{subValue}</p>}
+            {subValue && <p className="text-sm text-muted-foreground mt-0.5">{subValue}</p>}
             {trend !== undefined && (
               <div className={cn("flex items-center gap-1 mt-2 text-xs", trendColor)}>
                 <TrendIcon className="size-3" />

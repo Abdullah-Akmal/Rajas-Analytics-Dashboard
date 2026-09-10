@@ -89,6 +89,8 @@ export const orders = pgTable("orders", {
   customerId: text("customerId"),
   vatAmount: numeric("vatAmount", { precision: 10, scale: 2 }).default("0"),
   orderTime: timestamp("orderTime"),
+  // Presto per-location order number; Shipday's orderNumber ends with it.
+  orderNo: text("orderNo"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 

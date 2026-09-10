@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server"
 import { syncPrestoData, syncShipdayData } from "@/app/actions/dashboard"
+import { syncCostingSheet } from "@/lib/normalise/actions"
+import { syncPricingSheet } from "@/lib/pricing/actions"
+import { buildProductMaster } from "@/lib/product-master/actions"
+import { db } from "@/lib/db"
+import { syncLogs } from "@/lib/db/schema"
 
 // DAILY data sync over a rolling last-7-days window for Presto (both locations) +
 // Shipday. The window overlaps deliberately: a missed or failed run self-heals on
@@ -48,24 +53,52 @@ async function runWeeklySync() {
 
   // Shipday takes a date range directly.
   const shipday = await syncShipdayData(start, end)
+
+  // Corrections Priority 8 (items 56-62): the supplier -> recipe -> item cost chain
+  // lives in the costing workbook's formulas, but Analytics only sees a change once
+  // the sheet is re-read. Syncing Presto alone left a supplier price rise sitting in
+  // the sheet indefinitely, which breaks the "no manual re-entry" requirement. Costs,
+  // prices and the Product Master are refreshed here, in dependency order.
+  const costing = await syncCostingSheet()
+  const pricing = await syncPricingSheet()
+  const productMaster = await buildProductMaster()
   if (!shipday.success) errors.push(`Shipday: ${shipday.error}`)
+  if (!costing.success) errors.push(`Costing sheet: ${costing.error}`)
+  if (!pricing.success) errors.push(`Pricing sheet: ${pricing.error}`)
+  if (!productMaster.success) errors.push(`Product Master: ${productMaster.error}`)
 
   return {
     window: { start, end },
     presto,
     shipday: shipday.success ? { count: shipday.count ?? 0 } : { error: shipday.error },
+    costing: costing.success ? { items: costing.count ?? 0 } : { error: costing.error },
+    pricing: pricing.success ? { rows: pricing.items ?? 0 } : { error: pricing.error },
+    productMaster: productMaster.success
+      ? { products: productMaster.products ?? 0, aliasesLinked: productMaster.aliasesLinked ?? 0 }
+      : { error: productMaster.error },
     errors,
     ok: errors.length === 0,
   }
 }
 
+// Rejected runs used to return before anything was written, so a missing or wrong
+// CRON_SECRET left no trace: the dashboard simply stopped getting new data. Record the
+// rejection in sync_logs so it shows up on the Data Sync tab.
+async function logRejected(reason: string) {
+  try {
+    await db.insert(syncLogs).values({ source: "cron", status: "error", errorMessage: reason })
+  } catch {}
+}
+
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET
   if (!secret) {
+    await logRejected("CRON_SECRET is not set in the deployment environment; scheduled sync skipped")
     return NextResponse.json({ error: "CRON_SECRET not configured on the server" }, { status: 500 })
   }
   const auth = req.headers.get("authorization")
   if (auth !== `Bearer ${secret}`) {
+    await logRejected("Scheduled sync rejected: Authorization header did not match CRON_SECRET")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   try {

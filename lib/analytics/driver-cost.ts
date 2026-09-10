@@ -47,17 +47,24 @@ export async function getDriverCost(
   const caveats: string[] = []
 
   // Completed deliveries, distance and the fee recovered from customers.
-  const del = await db.execute<{ n: string; miles: string; fees: string }>(sql`
+  // The included mileage applies to EACH delivery (Corrections item 27: "£1 per mile
+  // only for mileage above 3 miles"), so extra miles are summed per delivery. Netting
+  // total miles against deliveries × 3 let short trips cancel out long ones.
+  const del = await db.execute<{ n: string; miles: string; extra: string; fees: string }>(sql`
     SELECT COUNT(*)::text                                             AS n,
            COALESCE(SUM(distance::numeric), 0)::text                  AS miles,
+           COALESCE(SUM(GREATEST(distance::numeric - ${includedMiles}::numeric, 0)), 0)::text AS extra,
            COALESCE(SUM("deliveryFee"::numeric), 0)::text             AS fees
       FROM deliveries
      WHERE "deliveryTime" IS NOT NULL
-       AND ("deliveryTime" AT TIME ZONE 'Europe/London')::date >= ${startDate}::date
-       AND ("deliveryTime" AT TIME ZONE 'Europe/London')::date <= ${endDate}::date`)
+       -- deliveryTime is a naive UTC timestamp: anchor it to UTC first, then read the
+       -- UK wall clock. A single AT TIME ZONE would treat the UTC value as UK time.
+       AND (("deliveryTime" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date >= ${startDate}::date
+       AND (("deliveryTime" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London')::date <= ${endDate}::date`)
 
   const deliveries = Number(del.rows?.[0]?.n ?? 0)
   const totalMiles = Number(del.rows?.[0]?.miles ?? 0)
+  const chargeableMiles = Number(del.rows?.[0]?.extra ?? 0)
   const deliveryFeeRecovered = Number(del.rows?.[0]?.fees ?? 0)
 
   // Shift hours from the manual log.
@@ -79,8 +86,6 @@ export async function getDriverCost(
   // Hourly cost is spread across the deliveries completed during those shifts.
   const hourlyAllocation = shiftHours * hourlyRate
   const basePay = deliveries * basePerDelivery
-  // Included mileage is per delivery, so the free allowance scales with volume.
-  const chargeableMiles = Math.max(0, totalMiles - deliveries * includedMiles)
   const extraMileage = chargeableMiles * extraPerMile
 
   const totalDriverCost = hourlyAllocation + basePay + extraMileage
@@ -123,8 +128,10 @@ export async function addDriverShift(input: {
 }) {
   try {
     if (!input.driverName?.trim()) return { success: false, error: "Driver name is required" }
-    const start = new Date(`${input.shiftDate}T${input.startTime}:00`)
-    let finish = new Date(`${input.shiftDate}T${input.finishTime}:00`)
+    // Stored as the UK wall clock the operator typed. The explicit "Z" stops the
+    // server's own timezone shifting it (a +05:00 dev machine stored 17:00 as 12:00).
+    const start = new Date(`${input.shiftDate}T${input.startTime}:00Z`)
+    let finish = new Date(`${input.shiftDate}T${input.finishTime}:00Z`)
     // Trade runs past midnight — a finish before the start belongs to the next day.
     if (finish <= start) finish = new Date(finish.getTime() + 86_400_000)
 

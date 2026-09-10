@@ -74,7 +74,7 @@ export function DriverShiftPanel() {
         <CardContent>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Store</span>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Store</span>
               <Select value={form.store} onValueChange={(v) => setForm((f) => ({ ...f, store: v ?? "Hyde Park" }))}>
                 <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -84,7 +84,7 @@ export function DriverShiftPanel() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Driver</span>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Driver</span>
               <Input
                 className="h-8 text-xs w-40" placeholder="Driver name"
                 value={form.driverName}
@@ -92,19 +92,19 @@ export function DriverShiftPanel() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Date</span>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Date</span>
               <Input type="date" className="h-8 text-xs w-36"
                 value={form.shiftDate}
                 onChange={(e) => setForm((f) => ({ ...f, shiftDate: e.target.value }))} />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Start</span>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Start</span>
               <Input type="time" className="h-8 text-xs w-28"
                 value={form.startTime}
                 onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Finish</span>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Finish</span>
               <Input type="time" className="h-8 text-xs w-28"
                 value={form.finishTime}
                 onChange={(e) => setForm((f) => ({ ...f, finishTime: e.target.value }))} />

@@ -27,7 +27,7 @@ export default function SettingsPage() {
 
       <Tabs defaultValue="settings">
         <TabsList>
-          <TabsTrigger value="settings">Analytics Settings</TabsTrigger>
+          <TabsTrigger value="settings">Business Settings</TabsTrigger>
           <TabsTrigger value="mapping">Product Mapping</TabsTrigger>
           <TabsTrigger value="offers">Offer Setup</TabsTrigger>
           <TabsTrigger value="drivers">Driver Shifts</TabsTrigger>

@@ -35,13 +35,16 @@ function marginStatus(r: Row, target: number, amber: number): {
 } {
   if (r.foodCostPct === null) return { label: "Cost Missing", tone: "text-muted-foreground border-border" }
   if (r.foodCostPct > target + amber * 2) return { label: "Margin Problem", tone: "text-destructive border-destructive" }
-  if (r.foodCostPct > target + amber) return { label: "Review", tone: "text-[oklch(0.75_0.18_75)] border-[oklch(0.75_0.18_75)]" }
-  return { label: "On Target", tone: "text-[oklch(0.7_0.15_150)] border-[oklch(0.7_0.15_150)]" }
+  if (r.foodCostPct > target + amber) return { label: "Review", tone: "text-warning border-warning" }
+  return { label: "On Target", tone: "text-success border-success" }
 }
 
 export function ProductsRequiringAttention({
-  startDate, endDate, location, brand,
-}: { startDate: string; endDate: string; location: string; brand: string }) {
+  startDate, endDate, location, brand, productType, category,
+}: {
+  startDate: string; endDate: string; location: string; brand: string
+  productType?: string; category?: string
+}) {
   const [data, setData] = useState<ItemPerformanceResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
@@ -49,11 +52,11 @@ export function ProductsRequiringAttention({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getItemPerformance(startDate, endDate, location, brand)
+    getItemPerformance(startDate, endDate, location, brand, productType, category)
       .then((r) => { if (!cancelled) { setData(r); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [startDate, endDate, location, brand])
+  }, [startDate, endDate, location, brand, productType, category])
 
   if (loading) return <Skeleton className="h-64 w-full" />
   if (!data) return <p className="text-sm text-muted-foreground">No data.</p>
@@ -74,8 +77,8 @@ export function ProductsRequiringAttention({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Products Requiring Attention</CardTitle>
-        <CardDescription className="text-xs">
+        <CardTitle className="text-base">Products Requiring Attention</CardTitle>
+        <CardDescription className="text-sm">
           Products whose economics are past the {pct(target)} target food cost, or that
           cannot be judged because no cost is mapped. Ranked by profit at stake.
         </CardDescription>
@@ -85,14 +88,14 @@ export function ProductsRequiringAttention({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">Product</TableHead>
-                <TableHead className="text-xs">Type</TableHead>
-                <TableHead className="text-xs text-right">Units</TableHead>
-                <TableHead className="text-xs text-right">Revenue</TableHead>
-                <TableHead className="text-xs text-right">FC%</TableHead>
-                <TableHead className="text-xs text-right">GP</TableHead>
-                <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="text-xs">Actions</TableHead>
+                <TableHead className="text-sm">Product</TableHead>
+                <TableHead className="text-sm">Type</TableHead>
+                <TableHead className="text-sm text-right">Units</TableHead>
+                <TableHead className="text-sm text-right">Revenue</TableHead>
+                <TableHead className="text-sm text-right">FC%</TableHead>
+                <TableHead className="text-sm text-right">GP</TableHead>
+                <TableHead className="text-sm">Status</TableHead>
+                <TableHead className="text-sm">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -101,24 +104,24 @@ export function ProductsRequiringAttention({
                 const missing = r.foodCostPct === null
                 return (
                   <TableRow key={r.productMasterId ?? r.productName}>
-                    <TableCell className="text-xs font-medium">
+                    <TableCell className="text-sm font-medium">
                       {r.productName}
                       {r.brand !== "Rajas" && (
-                        <Badge variant="secondary" className="ml-1.5 text-[9px] px-1 py-0">{r.brand}</Badge>
+                        <Badge variant="secondary" className="ml-1.5 text-xs px-1 py-0">{r.brand}</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground capitalize">
+                    <TableCell className="text-sm text-muted-foreground capitalize">
                       {r.productType.replace(/_/g, " ")}
                     </TableCell>
-                    <TableCell className="text-xs text-right">{r.units.toFixed(0)}</TableCell>
-                    <TableCell className="text-xs text-right">{money(r.revenue)}</TableCell>
+                    <TableCell className="text-sm text-right">{r.units.toFixed(0)}</TableCell>
+                    <TableCell className="text-sm text-right">{money(r.revenue)}</TableCell>
                     {/* §4: a missing cost shows N/A — never a zero that reads as free. */}
-                    <TableCell className="text-xs text-right">{pct(r.foodCostPct)}</TableCell>
-                    <TableCell className="text-xs text-right">{missing ? "N/A" : money(r.grossProfit)}</TableCell>
+                    <TableCell className="text-sm text-right">{pct(r.foodCostPct)}</TableCell>
+                    <TableCell className="text-sm text-right">{missing ? "N/A" : money(r.grossProfit)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={`text-[10px] ${st.tone}`}>{st.label}</Badge>
+                      <Badge variant="outline" className={`text-xs ${st.tone}`}>{st.label}</Badge>
                     </TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">
                       {/* §7: link OUT — Analytics identifies the problem, it does not
                           maintain a second pricing engine. */}
                       {missing ? (
@@ -134,7 +137,7 @@ export function ProductsRequiringAttention({
               })}
               {attention.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-xs text-muted-foreground text-center py-6">
+                  <TableCell colSpan={8} className="text-sm text-muted-foreground text-center py-6">
                     No products past target for this period.
                   </TableCell>
                 </TableRow>

@@ -34,6 +34,7 @@ POS item names are messy (`12" Piri Piri`, `12 inch peri peri`, …). Costs reso
 - Joining `order_items` straight to `item_alias` matches one line to **multiple** alias rows and multiplies `SUM(amount)`/`SUM(qty)`/cost. This has previously inflated revenue and profit across Item Profitability, Category, Overview and Offer reports.
 - Do **not** use the legacy `menu_items.costPrice` exact-name join; it misses the spellings the Name Review screen maps by hand.
 - `normKey()` (SQL) mirrors `normalizeRaw()` in [lib/normalise/index.ts](lib/normalise/index.ts). **If you change one, change the other** — the join depends on them producing identical output.
+- **In SQL regexes use `[[:space:]]`, never `\s`.** In this Postgres `regexp_replace(x, '\s+', ' ', 'g')` replaces the letter **s**, not whitespace. This silently broke the cost join for every name containing an "s" (319 of 563 aliases): only 47% of revenue joined to a cost. `\m`/`\M` word boundaries are fine — it is specifically `\s` that fails.
 
 See [docs/NORMALISATION.md](docs/NORMALISATION.md) for the full ETL.
 

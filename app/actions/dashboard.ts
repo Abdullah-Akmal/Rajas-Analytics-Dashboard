@@ -9,45 +9,16 @@ import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm"
 const dateGte = (col: any, d: string) => sql`${col}::date >= ${d}::date`
 const dateLte = (col: any, d: string) => sql`${col}::date <= ${d}::date`
 
-// ─── Sales-channel bucket filter ─────────────────────────────────────────────
-// Splits orders into three buckets by orderChannel (every order/line carries one):
-//   • instore   → "wix"   (in-house EPOS: walk-in, dine-in, phone)
-//   • website   → "eatpresto" (own online-ordering storefront)
-//   • platforms → uber eats / deliveroo / just eat (third-party delivery apps)
-// "all" (or undefined) applies no filter. Works for both query styles: pass a Drizzle
-// column (orders.orderChannel) OR a raw sql expression (sql`oi."orderChannel"`).
-const CHANNEL_MAP: Record<string, string[]> = {
-  instore: ["wix"],
-  website: ["eatpresto"],
-  platforms: ["ubereats", "deliveroo", "justeat"],
-}
-function channelCondition(channelCol: any, channel?: string | null) {
-  if (!channel || channel === "all") return undefined
-  const vals = CHANNEL_MAP[channel]
-  if (!vals || vals.length === 0) return undefined
-  return sql`LOWER(${channelCol}) IN (${sql.join(vals.map((v) => sql`${v}`), sql`, `)})`
-}
-
-// ─── Fulfilment-mode and order-platform filters ──────────────────────────────
-// mode     — how the order is fulfilled: walk_in / collection / delivery / dine_in
-// platform — where it was taken: "walk in" / phone / online (Presto also offers
-//            kiosk + future table, but no such rows exist in this data yet)
-// Both are compared case-insensitively with spaces normalised to underscores, so
-// the stored "walk in" (platform) and "walk_in" (mode) both match a `walk_in` key.
-const slug = (col: any) => sql`LOWER(REPLACE(TRIM(${col}), ' ', '_'))`
-function modeCondition(modeCol: any, mode?: string | null) {
-  if (!mode || mode === "all") return undefined
-  return sql`${slug(modeCol)} = ${mode}`
-}
-function platformCondition(platformCol: any, platform?: string | null) {
-  if (!platform || platform === "all") return undefined
-  return sql`${slug(platformCol)} = ${platform}`
-}
-// order_items has no platform column, so filter item lines by their parent order.
-function platformItemCondition(orderIdCol: any, platform?: string | null) {
-  if (!platform || platform === "all") return undefined
-  return sql`EXISTS (SELECT 1 FROM orders po WHERE po."orderId" = ${orderIdCol} AND ${slug(sql`po.platform`)} = ${platform})`
-}
+// Sales-channel / fulfilment-mode / order-platform / Product Master slicers and
+// normKey live in lib/db/slicers.ts — shared with lib/analytics and lib/operations so
+// the filters cannot drift between pages. See that file for the channel buckets.
+import {
+  normKey, pmSlicers, rawPmSlicers, orderSlicers, itemSlicers, rawItemSlicers, rawOrderSlicers,
+} from "@/lib/db/slicers"
+import type { PmFilters as SlicerPmFilters } from "@/lib/db/slicers"
+// A local alias, not `export type { … }`: the "use server" transform treats a
+// re-export as a runtime value and the build fails with "PmFilters is not defined".
+export type PmFilters = SlicerPmFilters
 
 // ─── Comparable-period clamp (spec §6/§11) ───────────────────────────────────
 // When the current window is still trading, both windows must be cut at the same
@@ -62,71 +33,6 @@ function elapsedClamp(timeCol: any, finalDay: string, cutoffSeconds: number | nu
   )`
 }
 
-// ─── Product Master slicers: brand / product type / category (spec §11) ──────
-// These dimensions live on product_master, not on order_items, so they filter via an
-// EXISTS on the alias→product-master chain. §11 is explicit that filters must change
-// the underlying CALCULATION — "do not calculate all brands together and merely hide
-// rows after calculation" — which is exactly what an EXISTS predicate does.
-export type PmFilters = { brand?: string; productType?: string; category?: string }
-
-function pmExists(itemNameCol: any, f?: PmFilters) {
-  if (!f) return undefined
-  const preds: any[] = []
-  if (f.brand && f.brand !== "all") preds.push(sql`pm.brand = ${f.brand}`)
-  if (f.productType && f.productType !== "all") preds.push(sql`pm."productType" = ${f.productType}`)
-  if (f.category && f.category !== "all") preds.push(sql`pm.category = ${f.category}`)
-  if (preds.length === 0) return undefined
-  return sql`EXISTS (
-    SELECT 1 FROM item_alias ia_f
-      JOIN product_master pm ON pm.id = ia_f."productMasterId"
-     WHERE lower(ia_f."normalizedRaw") = ${normKey(itemNameCol)}
-       AND ${sql.join(preds, sql` AND `)})`
-}
-
-/** Product-master slicers for a Drizzle order_items query. */
-function pmSlicers(f?: PmFilters) {
-  const c = pmExists(orderItems.itemName, f)
-  return c ? [c] : []
-}
-/** Same, as a raw ` AND …` fragment for hand-written SQL. Pass the table alias. */
-function rawPmSlicers(alias: string, f?: PmFilters) {
-  const c = pmExists(sql.raw(`${alias}."itemName"`), f)
-  return c ? sql` AND ${c}` : sql``
-}
-
-/** Slicer conditions for an ORDERS-based query (Drizzle condition array style). */
-function orderSlicers(channel?: string, mode?: string, platform?: string) {
-  const out: any[] = []
-  const c = channelCondition(orders.orderChannel, channel); if (c) out.push(c)
-  const m = modeCondition(orders.mode, mode); if (m) out.push(m)
-  const p = platformCondition(orders.platform, platform); if (p) out.push(p)
-  return out
-}
-/** Slicer conditions for an ORDER_ITEMS-based query (Drizzle condition array style). */
-function itemSlicers(channel?: string, mode?: string, platform?: string) {
-  const out: any[] = []
-  const c = channelCondition(orderItems.orderChannel, channel); if (c) out.push(c)
-  const m = modeCondition(orderItems.mode, mode); if (m) out.push(m)
-  const p = platformItemCondition(orderItems.orderId, platform); if (p) out.push(p)
-  return out
-}
-/** Same slicers as a raw ` AND …` fragment, for hand-written SQL. Pass the table alias. */
-function rawItemSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
-  const parts = [
-    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
-    modeCondition(sql.raw(`${alias}.mode`), mode),
-    platformItemCondition(sql.raw(`${alias}."orderId"`), platform),
-  ].filter(Boolean)
-  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
-}
-function rawOrderSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
-  const parts = [
-    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
-    modeCondition(sql.raw(`${alias}.mode`), mode),
-    platformCondition(sql.raw(`${alias}.platform`), platform),
-  ].filter(Boolean)
-  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
-}
 
 // ─── Reviewed-cost resolution (normalisation layer) ──────────────────────────
 // Reports cost POS lines through the human-reviewed item_alias → dim_costing_item
@@ -134,11 +40,19 @@ function rawOrderSlicers(alias: string, channel?: string, mode?: string, platfor
 // messy POS spellings/sizes/initials the Name Review screen maps by hand).
 //
 // normKey() replicates lib/normalise normalizeRaw() in SQL: lower + trim +
-// whitespace-collapse + the (tiny) typo map. Because both sides are lowercased and
+// whitespace-collapse + the (tiny) typo map.
+//
+// WHITESPACE MUST BE [[:space:]], NEVER \s.
+// In this Postgres, regexp_replace(x, '\s+', ' ', 'g') replaces the LETTER "s",
+// not whitespace — verified directly:
+//     regexp_replace('Full House Chicken', '\s+', '_', 'g') -> 'Full Hou_e Chicken'
+// That silently broke this join for every product name containing an "s", which was
+// 319 of 563 aliases: only 47% of revenue joined to a cost, and brand/product filters
+// saw less than a third of trade. The \m / \M word-boundary escapes below DO work;
+// it is specifically the \s class shorthand that does not. Because both sides are lowercased and
 // the typo fixes are applied identically, LOWER(item_alias."normalizedRaw") equals
 // normKey(order_items."itemName") for every mapped line — an exact join.
-const normKey = (col: any) =>
-  sql`regexp_replace(regexp_replace(regexp_replace(lower(btrim(${col})), '\\s+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g')`
+// (normKey itself is defined in lib/db/slicers.ts and imported above.)
 
 // ── Deduped per-key cost lookup ──────────────────────────────────────────────
 // item_alias stores the RAW POS spelling, so several near-duplicate rows (case /
@@ -460,6 +374,7 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
         customerId: sale.customerId?.toString() || null,
         vatAmount: sale.vatAmount?.toString() || "0",
         orderTime: validTime,
+        orderNo: sale.orderNo?.toString() || null,
       })
 
       const saleItems = sale.saleItems || sale.items || []
@@ -501,6 +416,7 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
             totalAmount: sql`EXCLUDED."totalAmount"`,
             cancelled: sql`EXCLUDED.cancelled`,
             orderTime: sql`EXCLUDED."orderTime"`,
+            orderNo: sql`EXCLUDED."orderNo"`,
           },
         })
     }
@@ -530,7 +446,9 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
       recordsProcessed: orderCount,
     })
 
-    revalidatePath("/dashboard")
+    // The data is already written. revalidatePath throws outside a Next request
+    // (CLI backfill scripts), which used to log a false "error" row after a good sync.
+    try { revalidatePath("/dashboard") } catch {}
     return { success: true, orders: orderCount, items: itemCount }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error"
@@ -682,7 +600,8 @@ export async function syncShipdayData(startDate: string, endDate: string) {
     }
 
     await db.insert(syncLogs).values({ source: "shipday", status: "success", recordsProcessed: rows.length })
-    revalidatePath("/dashboard")
+    // Data is written; revalidatePath throws outside a Next request (CLI backfills).
+    try { revalidatePath("/dashboard") } catch {}
     return { success: true, count: rows.length }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error"
@@ -749,55 +668,93 @@ export async function clearSyncData(scope: "orders" | "deliveries" | "all") {
 export async function getOverviewKPIs(startDate: string, endDate: string, location?: string, channel?: string, mode?: string, platform?: string, pm?: PmFilters) {
   const cp = comparablePeriod(startDate, endDate)
 
+  // Brand, product type and category are ITEM-level dimensions — they live on
+  // product_master, not on the order. So when one is active the headline KPIs must be
+  // computed from the matching order LINES; summing whole order totals would report a
+  // mixed order entirely under whichever brand was selected, which is why the Overview
+  // showed identical figures for Rajas and House of Peri Peri.
+  const pmActive = Boolean(
+    pm && (
+      (pm.brand && pm.brand !== "all") ||
+      (pm.productType && pm.productType !== "all") ||
+      (pm.category && pm.category !== "all")
+    ),
+  )
+
   const measure = async (from: string, to: string) => {
-  const orderDateFilter = [
-    sql`${orders.date}::date >= ${from}::date`,
-    sql`${orders.date}::date <= ${to}::date`,
-    eq(orders.cancelled, false),
-  ]
-  if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
-  orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
-  const oClamp = elapsedClamp(orders.orderTime, to, cp.cutoffSeconds)
-  if (oClamp) orderDateFilter.push(oClamp as any)
+    const orderDateFilter: any[] = [
+      sql`${orders.date}::date >= ${from}::date`,
+      sql`${orders.date}::date <= ${to}::date`,
+      eq(orders.cancelled, false),
+    ]
+    if (location && location !== "all") orderDateFilter.push(eq(orders.location, location) as any)
+    orderDateFilter.push(...(orderSlicers(channel, mode, platform) as any[]))
+    const oClamp = elapsedClamp(orders.orderTime, to, cp.cutoffSeconds)
+    if (oClamp) orderDateFilter.push(oClamp as any)
 
-  const itemConditions: any[] = [
-    sql`${orderItems.date}::date >= ${startDate}::date`,
-    sql`${orderItems.date}::date <= ${endDate}::date`,
-    eq(orderItems.cancelled, false),
-    sql`${orderItems.amount}::numeric > 0`,
-  ]
-  if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
-  itemConditions.push(...itemSlicers(channel, mode, platform))
+    const itemConditions: any[] = [
+      sql`${orderItems.date}::date >= ${from}::date`,
+      sql`${orderItems.date}::date <= ${to}::date`,
+      eq(orderItems.cancelled, false),
+      sql`${orderItems.amount}::numeric > 0`,
+    ]
+    if (location && location !== "all") itemConditions.push(eq(orderItems.location, location))
+    itemConditions.push(...itemSlicers(channel, mode, platform))
+    itemConditions.push(...pmSlicers(pm))
+    // order_items carries no timestamp, so the partial-day clamp is applied through
+    // the parent order — otherwise a part-day would compare against a whole one.
+    if (cp.cutoffSeconds !== null) {
+      itemConditions.push(sql`EXISTS (
+        SELECT 1 FROM orders po
+         WHERE po."orderId" = ${orderItems.orderId}
+           AND ${elapsedClamp(sql`po."orderTime"`, to, cp.cutoffSeconds)})`)
+    }
 
-  // Run both aggregates in parallel — independent queries, no reason to await serially
-  const cl = costLookup()
-  const [result, itemResult] = await Promise.all([
-    db
-      .select({
-        totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
-        totalOrders: sql<number>`COUNT(*)`,
-        avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
-        totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
-      })
-      .from(orders)
-      .where(and(...orderDateFilter)),
-    db
-      .select({
-        totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
-        totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${cl.unitCost}, 0)), 0)`,
-        // §4 missing-cost rule + §6 "Gross Profit — KEEP + cost coverage/confidence".
-        // Margin is computed over COSTED revenue only; counting an uncosted line at
-        // zero cost reports it as 100% gross profit and inflates the headline (it read
-        // 76.7% here against 63.5% on Item Profitability, which applies the rule).
-        costedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
-        uncostedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
-      })
-      .from(orderItems)
-      .leftJoin(cl, sql`${cl.nk} = ${normKey(orderItems.itemName)}`)
-      .where(and(...itemConditions)),
-  ])
+    const cl = costLookup()
+    const [result, itemResult] = await Promise.all([
+      db
+        .select({
+          totalRevenue: sql<number>`COALESCE(SUM(${orders.totalAmount}::numeric), 0)`,
+          totalOrders: sql<number>`COUNT(*)`,
+          avgOrderValue: sql<number>`COALESCE(AVG(${orders.totalAmount}::numeric), 0)`,
+          totalDiscount: sql<number>`COALESCE(SUM(${orders.discountValue}::numeric), 0)`,
+        })
+        .from(orders)
+        .where(and(...orderDateFilter)),
+      db
+        .select({
+          totalItemsSold: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric), 0)`,
+          totalCost: sql<number>`COALESCE(SUM(${orderItems.qty}::numeric * COALESCE(${cl.unitCost}, 0)), 0)`,
+          // §4 missing-cost rule + §6 "Gross Profit — KEEP + cost coverage/confidence".
+          // Margin is computed over COSTED revenue only; counting an uncosted line at
+          // zero cost reports it as 100% gross profit and inflates the headline.
+          costedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
+          uncostedRevenue: sql<number>`COALESCE(SUM(CASE WHEN COALESCE(${cl.unitCost}, 0) > 0 THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
+          // Used as the headline figures whenever a product-level filter is active.
+          itemRevenue: sql<number>`COALESCE(SUM(${orderItems.amount}::numeric), 0)`,
+          itemDiscount: sql<number>`COALESCE(SUM(${orderItems.discount}::numeric), 0)`,
+          itemOrders: sql<number>`COUNT(DISTINCT ${orderItems.orderId})`,
+        })
+        .from(orderItems)
+        .leftJoin(cl, sql`${cl.nk} = ${normKey(orderItems.itemName)}`)
+        .where(and(...itemConditions)),
+    ])
 
-    return { ...result[0], ...itemResult[0] }
+    const o = result[0]
+    const i = itemResult[0]
+    if (!pmActive) return { ...o, ...i }
+
+    // Product-filtered view: revenue, orders and discount come from the matching lines.
+    const itemRevenue = Number(i.itemRevenue ?? 0)
+    const itemOrders = Number(i.itemOrders ?? 0)
+    return {
+      ...o,
+      ...i,
+      totalRevenue: itemRevenue,
+      totalOrders: itemOrders,
+      avgOrderValue: itemOrders > 0 ? itemRevenue / itemOrders : 0,
+      totalDiscount: Number(i.itemDiscount ?? 0),
+    }
   }
 
   const [current, previous] = await Promise.all([
@@ -2264,5 +2221,54 @@ export async function fillRangeGaps(missingDays: string[], maxDays = 31) {
     orders,
     skipped: Math.max(0, missingDays.length - days.length),
     failed,
+  }
+}
+
+/**
+ * How much revenue can be attributed to a brand at all.
+ *
+ * Brand, product type and category resolve through the Product Master, so a POS line
+ * whose name maps to no product belongs to no brand and is excluded from EVERY brand
+ * view. That makes the brand totals fail to sum to the unfiltered total — which looks
+ * like a broken filter unless the shortfall is stated. This reports it so the gap is
+ * visible and actionable rather than mysterious.
+ */
+export async function getBrandCoverage(
+  startDate: string, endDate: string,
+  location?: string, channel?: string, mode?: string, platform?: string,
+) {
+  const conditions: any[] = [
+    dateGte(orderItems.date, startDate),
+    dateLte(orderItems.date, endDate),
+    eq(orderItems.cancelled, false),
+    sql`${orderItems.amount}::numeric > 0`,
+  ]
+  if (location && location !== "all") conditions.push(eq(orderItems.location, location))
+  conditions.push(...itemSlicers(channel, mode, platform))
+
+  const mapped = sql`EXISTS (
+    SELECT 1 FROM item_alias ia_c
+      JOIN product_master pm_c ON pm_c.id = ia_c."productMasterId"
+     WHERE lower(ia_c."normalizedRaw") = ${normKey(orderItems.itemName)})`
+
+  const r = await db
+    .select({
+      totalRevenue: sql<number>`COALESCE(SUM(${orderItems.amount}::numeric), 0)`,
+      mappedRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${mapped} THEN ${orderItems.amount}::numeric ELSE 0 END), 0)`,
+      unmappedRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${mapped} THEN 0 ELSE ${orderItems.amount}::numeric END), 0)`,
+      unmappedItems: sql<number>`COUNT(DISTINCT CASE WHEN ${mapped} THEN NULL ELSE ${orderItems.itemName} END)`,
+    })
+    .from(orderItems)
+    .where(and(...conditions))
+
+  const row = r[0]
+  const total = Number(row?.totalRevenue ?? 0)
+  const unmapped = Number(row?.unmappedRevenue ?? 0)
+  return {
+    totalRevenue: total,
+    mappedRevenue: Number(row?.mappedRevenue ?? 0),
+    unmappedRevenue: unmapped,
+    unmappedItems: Number(row?.unmappedItems ?? 0),
+    coveragePct: total > 0 ? ((total - unmapped) / total) * 100 : 0,
   }
 }

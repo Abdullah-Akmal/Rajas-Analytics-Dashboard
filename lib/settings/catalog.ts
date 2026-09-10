@@ -12,13 +12,21 @@
  */
 
 export type SettingGroup =
+  | "VAT"
   | "Commercial"
   | "Menu Intelligence"
   | "Channel"
   | "Hyde Park Drivers"
   | "Offers"
+  | "Delivery"
+  | "Basket Growth"
+  | "Retention"
 
-export type SettingUnit = "percent" | "currency" | "number" | "days" | "miles"
+export type SettingUnit =
+  | "percent" | "currency" | "number" | "days" | "miles" | "minutes"
+  // Non-numeric settings. Values are still stored as text in analytics_settings;
+  // "boolean" persists 1/0 and "choice" persists the option key.
+  | "boolean" | "choice"
 
 export type SettingDef = {
   key: string
@@ -26,8 +34,11 @@ export type SettingDef = {
   group: SettingGroup
   unit: SettingUnit
   scope: "global" | "perStore" | "perChannel"
-  default: number
+  /** Numeric default, or 1/0 for boolean, or the default option key for a choice. */
+  default: number | string
   help?: string
+  /** Required for unit "choice": the selectable options in display order. */
+  options?: Array<{ value: string; label: string }>
   /** Where the seeded value comes from, when the pricing sheet supplies one. */
   seedFrom?: "instoreTargetFcPct" | "platformTargetFcPct" | "platformCommissionPct" | "mealUplift" | "amberTolerancePct"
 }
@@ -41,6 +52,36 @@ export const CHANNEL_LABELS: Record<string, string> = {
 }
 
 export const SETTINGS: SettingDef[] = [
+  // ── VAT (Corrections Priority 1) ──────────────────────────────────────────
+  // The correction brief requires ONE VAT method applied consistently across Item
+  // Profitability, Item Performance, Channel Performance and Offers — never per-page
+  // logic. Everything reads `revenue_basis`, so changing it here changes all of them.
+  {
+    key: "vat_enabled", label: "VAT enabled", group: "VAT",
+    unit: "boolean", scope: "global", default: 1,
+    help: "Turn off to treat all sales as VAT-free, which makes gross and net revenue identical.",
+  },
+  {
+    key: "revenue_basis", label: "Profitability revenue basis", group: "VAT",
+    unit: "choice", scope: "global", default: "net",
+    options: [
+      { value: "net", label: "Net revenue (excluding VAT)" },
+      { value: "gross", label: "Gross revenue (including VAT)" },
+    ],
+    help:
+      "Supplier costs are recorded excluding VAT, so comparing them with VAT-inclusive " +
+      "revenue understates every food-cost %. Net is the like-for-like basis. Net revenue " +
+      "uses the VAT actually recorded on each POS line, not an assumed rate, so zero-rated " +
+      "items are handled correctly.",
+  },
+  {
+    key: "vat_rate", label: "VAT rate %", group: "VAT",
+    unit: "percent", scope: "global", default: 0.20,
+    help:
+      "Reference rate only — used where a line carries no VAT figure from the POS. Lines " +
+      "that do carry one always use their recorded amount.",
+  },
+
   // ── Commercial ────────────────────────────────────────────────────────────
   {
     key: "target_food_cost_pct", label: "Target food cost %", group: "Commercial",
@@ -126,10 +167,43 @@ export const SETTINGS: SettingDef[] = [
     unit: "days", scope: "global", default: 28,
     help: "Comparable window before the offer used to estimate incrementality.",
   },
+
+  // ── Operations (Operations corrections §8) ────────────────────────────────
+  // Every threshold the Operations pages judge against lives here, so no business
+  // rule needs a code change.
+  {
+    key: "delivery_target_minutes", label: "Delivery target", group: "Delivery",
+    unit: "minutes", scope: "global", default: 35,
+    help: "Placement to delivered. Drives \"% delivered within target\" on Delivery & Drivers.",
+  },
+  {
+    key: "basket_min_pair_orders", label: "Minimum pair orders", group: "Basket Growth",
+    unit: "number", scope: "global", default: 10,
+    help:
+      "A Frequently Bought Together pair needs at least this many orders before it is " +
+      "recommended. Below it the pair is shown as Insufficient Data.",
+  },
+  {
+    key: "retention_at_risk_days", label: "At Risk after", group: "Retention",
+    unit: "days", scope: "global", default: 30,
+    help: "An identified customer whose last order is older than this is At Risk.",
+  },
+  {
+    key: "retention_lapsed_days", label: "Lapsed after", group: "Retention",
+    unit: "days", scope: "global", default: 60,
+    help: "An identified customer whose last order is older than this is Lapsed.",
+  },
+  {
+    key: "retention_cohort_window_days", label: "Repeat window", group: "Retention",
+    unit: "days", scope: "global", default: 30,
+    help: "Cohort repeat rate counts a new customer as repeating if they order again within this many days.",
+  },
 ]
 
 export const SETTING_GROUPS: SettingGroup[] = [
+  "VAT",
   "Commercial", "Menu Intelligence", "Channel", "Hyde Park Drivers", "Offers",
+  "Delivery", "Basket Growth", "Retention",
 ]
 
 export const byKey = (k: string) => SETTINGS.find((s) => s.key === k)
@@ -137,6 +211,11 @@ export const byKey = (k: string) => SETTINGS.find((s) => s.key === k)
 /** Composite identity of one setting value. */
 export function scopeId(key: string, store?: string | null, channel?: string | null) {
   return `${key}::${store ?? ""}::${channel ?? ""}`
+}
+
+/** True when the setting is edited as something other than a number. */
+export function isNumeric(def: SettingDef): boolean {
+  return def.unit !== "boolean" && def.unit !== "choice"
 }
 
 /** Percent settings are stored as decimals (0.33) but edited as 33. */
@@ -152,6 +231,7 @@ export function unitSuffix(def: SettingDef): string {
     case "currency": return "£"
     case "miles": return "mi"
     case "days": return "days"
+    case "minutes": return "min"
     default: return ""
   }
 }

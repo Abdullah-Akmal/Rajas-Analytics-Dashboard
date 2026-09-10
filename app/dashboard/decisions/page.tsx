@@ -17,10 +17,10 @@ function num(v: unknown) { return Number(v ?? 0) }
 type Insight = { text: string; tone: "good" | "warn" | "bad" | "info"; tag?: string }
 
 const toneStyle: Record<Insight["tone"], string> = {
-  good: "text-[oklch(0.7_0.15_150)]",
-  warn: "text-[oklch(0.75_0.18_75)]",
+  good: "text-success",
+  warn: "text-warning",
   bad: "text-destructive",
-  info: "text-[oklch(0.65_0.15_220)]",
+  info: "text-info",
 }
 
 export default function DecisionsPage() {
@@ -172,7 +172,7 @@ export default function DecisionsPage() {
                     <li key={i} className="flex items-start gap-2 text-xs">
                       <CircleDot className={`size-3.5 mt-0.5 shrink-0 ${toneStyle[it.tone]}`} />
                       <div>
-                        {it.tag && <Badge variant="outline" className="text-[9px] mr-1.5 align-middle">{it.tag}</Badge>}
+                        {it.tag && <Badge variant="outline" className="text-xs mr-1.5 align-middle">{it.tag}</Badge>}
                         <span className="text-foreground leading-relaxed">{it.text}</span>
                       </div>
                     </li>

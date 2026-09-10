@@ -126,7 +126,7 @@ export default function CostingPage() {
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   const marginColor = (m: number) =>
-    m >= 60 ? "text-[oklch(0.7_0.15_150)]" : m >= 40 ? "text-[oklch(0.75_0.18_75)]" : "text-destructive"
+    m >= 60 ? "text-success" : m >= 40 ? "text-warning" : "text-destructive"
 
   const top10ByProfit = [...costedItems].sort((a, b) => Number(b.grossProfit) - Number(a.grossProfit)).slice(0, 10)
   const top10ByMargin = [...costedItems].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10)
@@ -157,10 +157,10 @@ export default function CostingPage() {
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">{k.label}</p>
-              <p className="text-xl font-bold text-foreground mt-1">{k.value}</p>
+              <p className="text-sm text-muted-foreground">{k.label}</p>
+              <p className="text-3xl font-bold text-foreground mt-1">{k.value}</p>
               {"note" in k && k.note && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">{k.note}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{k.note}</p>
               )}
             </CardContent>
           </Card>
@@ -185,6 +185,8 @@ export default function CostingPage() {
             endDate={filters.endDate}
             location={filters.location}
             brand={filters.brand}
+            productType={filters.productType}
+            category={filters.category}
           />
         </TabsContent>
 
@@ -192,7 +194,7 @@ export default function CostingPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-4">
-                <CardTitle className="text-sm font-semibold">All Items — Cost vs Revenue</CardTitle>
+                <CardTitle className="text-base font-semibold">All Items — Cost vs Revenue</CardTitle>
                 <div className="relative w-56">
                   <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
                   <Input
@@ -217,57 +219,57 @@ export default function CostingPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs">Item</TableHead>
-                      <TableHead className="text-xs">Category</TableHead>
-                      <TableHead className="text-xs text-right">Qty Sold</TableHead>
-                      <TableHead className="text-xs text-right">Cost Price</TableHead>
-                      <TableHead className="text-xs text-right">Avg Sale Price</TableHead>
-                      <TableHead className="text-xs text-right">Revenue</TableHead>
-                      <TableHead className="text-xs text-right">Total Cost</TableHead>
-                      <TableHead className="text-xs text-right">Gross Profit</TableHead>
-                      <TableHead className="text-xs text-right">Margin %</TableHead>
-                      <TableHead className="text-xs text-right">Discounts</TableHead>
+                      <TableHead className="text-sm">Item</TableHead>
+                      <TableHead className="text-sm">Category</TableHead>
+                      <TableHead className="text-sm text-right">Qty Sold</TableHead>
+                      <TableHead className="text-sm text-right">Cost Price</TableHead>
+                      <TableHead className="text-sm text-right">Avg Sale Price</TableHead>
+                      <TableHead className="text-sm text-right">Revenue</TableHead>
+                      <TableHead className="text-sm text-right">Total Cost</TableHead>
+                      <TableHead className="text-sm text-right">Gross Profit</TableHead>
+                      <TableHead className="text-sm text-right">Margin %</TableHead>
+                      <TableHead className="text-sm text-right">Discounts</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((item, i) => (
                       <TableRow key={i}>
-                        <TableCell className="text-xs font-medium">
+                        <TableCell className="text-sm font-medium">
                           <span className="inline-flex items-center gap-1.5">
                             {item.itemName}
                             {item.costStatus === "modifier" && (
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal">
+                              <Badge variant="secondary" className="text-xs px-1 py-0 font-normal">
                                 modifier
                               </Badge>
                             )}
                           </span>
                         </TableCell>
-                        <TableCell className="text-xs">
-                          <Badge variant="outline" className="text-[10px]">{item.categoryName || "—"}</Badge>
+                        <TableCell className="text-sm">
+                          <Badge variant="outline" className="text-xs">{item.categoryName || "—"}</Badge>
                           {item.categories.length > 1 && (
-                            <span className="ml-1 text-[10px] text-muted-foreground" title={item.categories.join(", ")}>
+                            <span className="ml-1 text-xs text-muted-foreground" title={item.categories.join(", ")}>
                               +{item.categories.length - 1}
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-xs text-right">{Number(item.totalQty).toFixed(0)}</TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-sm text-right">{Number(item.totalQty).toFixed(0)}</TableCell>
+                        <TableCell className="text-sm text-right">
                           {item.costPrice ? `£${Number(item.costPrice).toFixed(2)}` : <span className="text-muted-foreground">No cost</span>}
                         </TableCell>
-                        <TableCell className="text-xs text-right">£{Number(item.avgUnitPrice).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right font-medium">£{Number(item.totalRevenue).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right">£{Number(item.totalCost).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right font-medium">
-                          <span className={Number(item.grossProfit) >= 0 ? "text-[oklch(0.7_0.15_150)]" : "text-destructive"}>
+                        <TableCell className="text-sm text-right">£{Number(item.avgUnitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm text-right font-medium">£{Number(item.totalRevenue).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm text-right">£{Number(item.totalCost).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm text-right font-medium">
+                          <span className={Number(item.grossProfit) >= 0 ? "text-success" : "text-destructive"}>
                             £{Number(item.grossProfit).toFixed(2)}
                           </span>
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-sm text-right">
                           <span className={marginColor(Number(item.marginPercent))}>
                             {Number(item.marginPercent).toFixed(1)}%
                           </span>
                         </TableCell>
-                        <TableCell className="text-xs text-right text-muted-foreground">
+                        <TableCell className="text-sm text-right text-muted-foreground">
                           £{Number(item.totalDiscount).toFixed(2)}
                         </TableCell>
                       </TableRow>
@@ -284,8 +286,8 @@ export default function CostingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold">Profit by Category</CardTitle>
-                <CardDescription className="text-xs">Top 10 categories by gross profit</CardDescription>
+                <CardTitle className="text-base font-semibold">Profit by Category</CardTitle>
+                <CardDescription className="text-sm">Top 10 categories by gross profit</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-64 w-full" /> : (
@@ -295,8 +297,8 @@ export default function CostingPage() {
                       layout="vertical"
                       margin={{ left: 8, right: 8 }}
                     >
-                      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
-                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
+                      <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
+                      <YAxis type="category" dataKey="category" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="grossProfit" fill="var(--color-chart-3)" radius={4} name="Gross Profit" />
                     </BarChart>
@@ -306,8 +308,8 @@ export default function CostingPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold">Margin % by Category</CardTitle>
-                <CardDescription className="text-xs">Top 10 categories by margin</CardDescription>
+                <CardTitle className="text-base font-semibold">Margin % by Category</CardTitle>
+                <CardDescription className="text-sm">Top 10 categories by margin</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-64 w-full" /> : (
@@ -317,8 +319,8 @@ export default function CostingPage() {
                       layout="vertical"
                       margin={{ left: 8, right: 8 }}
                     >
-                      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <YAxis type="category" dataKey="category" tick={{ fontSize: 10 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
+                      <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <YAxis type="category" dataKey="category" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="marginPercent" radius={4} name="Margin %">
                         {[...(categories as Record<string, unknown>[])].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10).map((c, i) => (
@@ -338,22 +340,22 @@ export default function CostingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingUp className="size-4 text-[oklch(0.7_0.15_150)]" />
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <TrendingUp className="size-4 text-success" />
                   Top 10 by Gross Profit
                 </CardTitle>
-                <CardDescription className="text-xs">Highest absolute profit contributors</CardDescription>
+                <CardDescription className="text-sm">Highest absolute profit contributors</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-48 w-full" /> : top10ByProfit.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4 text-center">No data yet</p>
+                  <p className="text-sm text-muted-foreground py-4 text-center">No data yet</p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {top10ByProfit.map((item, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <span className="text-muted-foreground w-5 text-right">{i + 1}</span>
                         <span className="flex-1 truncate font-medium">{item.itemName}</span>
-                        <span className="text-[oklch(0.7_0.15_150)] font-semibold">£{Number(item.grossProfit).toFixed(2)}</span>
+                        <span className="text-success font-semibold">£{Number(item.grossProfit).toFixed(2)}</span>
                         <span className="text-muted-foreground w-12 text-right">{Number(item.marginPercent).toFixed(0)}%</span>
                       </div>
                     ))}
@@ -363,15 +365,15 @@ export default function CostingPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <TrendingUp className="size-4 text-primary" />
                   Top 10 by Margin %
                 </CardTitle>
-                <CardDescription className="text-xs">Highest margin items (min 5 sold)</CardDescription>
+                <CardDescription className="text-sm">Highest margin items (min 5 sold)</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-48 w-full" /> : top10ByMargin.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4 text-center">No data yet</p>
+                  <p className="text-sm text-muted-foreground py-4 text-center">No data yet</p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {top10ByMargin.map((item, i) => (
@@ -393,11 +395,11 @@ export default function CostingPage() {
         <TabsContent value="risk" className="mt-4">
           <Card>
             <CardHeader className="pb-2 text-center">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <TrendingDown className="size-4 text-destructive" />
                 At Risk Items — Low Margin (&lt;40%) with Sales Volume
               </CardTitle>
-              <CardDescription className="text-xs">Items selling well but dragging down profitability</CardDescription>
+              <CardDescription className="text-sm">Items selling well but dragging down profitability</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? <Skeleton className="h-48 w-full" /> : bottom10.length === 0 ? (
@@ -406,26 +408,26 @@ export default function CostingPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs">Item</TableHead>
-                      <TableHead className="text-xs">Category</TableHead>
-                      <TableHead className="text-xs text-right">Qty Sold</TableHead>
-                      <TableHead className="text-xs text-right">Revenue</TableHead>
-                      <TableHead className="text-xs text-right">Margin %</TableHead>
-                      <TableHead className="text-xs">Action</TableHead>
+                      <TableHead className="text-sm">Item</TableHead>
+                      <TableHead className="text-sm">Category</TableHead>
+                      <TableHead className="text-sm text-right">Qty Sold</TableHead>
+                      <TableHead className="text-sm text-right">Revenue</TableHead>
+                      <TableHead className="text-sm text-right">Margin %</TableHead>
+                      <TableHead className="text-sm">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {bottom10.map((item, i) => (
                       <TableRow key={i}>
-                        <TableCell className="text-xs font-medium">{item.itemName}</TableCell>
-                        <TableCell className="text-xs">{item.categoryName || "—"}</TableCell>
-                        <TableCell className="text-xs text-right">{Number(item.totalQty).toFixed(0)}</TableCell>
-                        <TableCell className="text-xs text-right">£{Number(item.totalRevenue).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-sm font-medium">{item.itemName}</TableCell>
+                        <TableCell className="text-sm">{item.categoryName || "—"}</TableCell>
+                        <TableCell className="text-sm text-right">{Number(item.totalQty).toFixed(0)}</TableCell>
+                        <TableCell className="text-sm text-right">£{Number(item.totalRevenue).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm text-right">
                           <span className="text-destructive font-semibold">{Number(item.marginPercent).toFixed(1)}%</span>
                         </TableCell>
-                        <TableCell className="text-xs">
-                          <Badge variant="destructive" className="text-[10px]">Review pricing</Badge>
+                        <TableCell className="text-sm">
+                          <Badge variant="destructive" className="text-xs">Review pricing</Badge>
                         </TableCell>
                       </TableRow>
                     ))}

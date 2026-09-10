@@ -41,9 +41,9 @@ function classifyItem(qty: number, margin: number, medianQty: number): "STAR" | 
 }
 
 const QUAD_LABELS: Record<string, { label: string; color: string; desc: string }> = {
-  STAR: { label: "STAR", color: "bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)] border-[oklch(0.35_0.08_150)]", desc: "High popularity, high margin — push hard" },
-  PROMOTE: { label: "PROMOTE", color: "bg-[oklch(0.22_0.08_220)] text-[oklch(0.65_0.15_220)] border-[oklch(0.35_0.08_220)]", desc: "Low popularity, high margin — feature in offers" },
-  FIX: { label: "FIX", color: "bg-[oklch(0.25_0.1_75)] text-[oklch(0.75_0.18_75)] border-[oklch(0.38_0.1_75)]", desc: "High popularity, low margin — reprice or rework" },
+  STAR: { label: "STAR", color: "bg-success-subtle text-success border-success-subtle", desc: "High popularity, high margin — push hard" },
+  PROMOTE: { label: "PROMOTE", color: "bg-info text-info border-info", desc: "Low popularity, high margin — feature in offers" },
+  FIX: { label: "FIX", color: "bg-warning-subtle text-warning border-warning-subtle", desc: "High popularity, low margin — reprice or rework" },
   REMOVE: { label: "REMOVE", color: "bg-destructive/20 text-destructive border-destructive/30", desc: "Low popularity, low margin — consider removing" },
 }
 
@@ -175,8 +175,8 @@ export default function SalesPage() {
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">{k.label}</p>
-              {loading ? <Skeleton className="h-7 w-24 mt-1" /> : <p className="text-xl font-bold text-foreground mt-1">{k.value}</p>}
+              <p className="text-sm text-muted-foreground">{k.label}</p>
+              {loading ? <Skeleton className="h-7 w-24 mt-1" /> : <p className="text-3xl font-bold text-foreground mt-1">{k.value}</p>}
             </CardContent>
           </Card>
         ))}
@@ -196,7 +196,7 @@ export default function SalesPage() {
                   {q}
                 </div>
                 <p className="text-2xl font-bold mt-2">{byClass[q].length}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{QUAD_LABELS[q].desc}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{QUAD_LABELS[q].desc}</p>
               </CardContent>
             </Card>
           ))}
@@ -221,21 +221,23 @@ export default function SalesPage() {
             endDate={filters.endDate}
             location={filters.location}
             brand={filters.brand}
+            productType={filters.productType}
+            category={filters.category}
           />
         </TabsContent>
 
         <TabsContent value="matrix" className="mt-4">
           <Card>
             <CardHeader className="pb-2 text-center">
-              <CardTitle className="text-sm font-semibold">Popularity vs Margin — Menu Engineering Matrix</CardTitle>
-              <CardDescription className="text-xs">Slice by quadrant to isolate STAR / PROMOTE / FIX items — points are positioned by popularity (units sold).</CardDescription>
+              <CardTitle className="text-base font-semibold">Popularity vs Margin — Menu Engineering Matrix</CardTitle>
+              <CardDescription className="text-sm">Slice by quadrant to isolate STAR / PROMOTE / FIX items — points are positioned by popularity (units sold).</CardDescription>
             </CardHeader>
             <CardContent>
               {/* Classification slicer */}
               <div className="flex flex-wrap gap-1.5 mb-4">
                 <button
                   onClick={() => setSelectedClass("all")}
-                  className={`text-[11px] px-2.5 py-1 rounded-md border transition-all ${selectedClass === "all" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                  className={`text-sm px-2.5 py-1 rounded-md border transition-all ${selectedClass === "all" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
                 >
                   All items ({classified.length})
                 </button>
@@ -245,7 +247,7 @@ export default function SalesPage() {
                     <button
                       key={q}
                       onClick={() => setSelectedClass(q)}
-                      className="text-[11px] px-2.5 py-1 rounded-md border transition-all flex items-center gap-1.5"
+                      className="text-sm px-2.5 py-1 rounded-md border transition-all flex items-center gap-1.5"
                       style={active
                         ? { background: QUAD_COLORS[q], borderColor: QUAD_COLORS[q], color: "#fff" }
                         : { borderColor: "var(--border)" }}
@@ -258,7 +260,7 @@ export default function SalesPage() {
               </div>
 
               {/* Chart controls */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3 text-[11px]">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3 text-sm">
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground">Units axis:</span>
                   {(["log", "linear"] as const).map((s) => (
@@ -287,20 +289,20 @@ export default function SalesPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     {/* Quadrant background shading + corner labels (explicit siblings — Recharts
                         re-processes children, so a mapped array here breaks key reconciliation) */}
-                    <ReferenceArea x1={xScale === "log" ? 1 : 0} x2={medianX} y1={50} y2={100} fill={QUAD_COLORS.PROMOTE} fillOpacity={0.07} stroke="none" label={{ value: "PROMOTE", position: "insideTopLeft", fill: QUAD_COLORS.PROMOTE, fontSize: 11, fontWeight: 700, opacity: 0.55 }} />
-                    <ReferenceArea x1={medianX} x2={maxUnits} y1={50} y2={100} fill={QUAD_COLORS.STAR} fillOpacity={0.07} stroke="none" label={{ value: "STAR", position: "insideTopRight", fill: QUAD_COLORS.STAR, fontSize: 11, fontWeight: 700, opacity: 0.55 }} />
-                    <ReferenceArea x1={xScale === "log" ? 1 : 0} x2={medianX} y1={0} y2={50} fill={QUAD_COLORS.REMOVE} fillOpacity={0.07} stroke="none" label={{ value: "REMOVE", position: "insideBottomLeft", fill: QUAD_COLORS.REMOVE, fontSize: 11, fontWeight: 700, opacity: 0.55 }} />
-                    <ReferenceArea x1={medianX} x2={maxUnits} y1={0} y2={50} fill={QUAD_COLORS.FIX} fillOpacity={0.07} stroke="none" label={{ value: "FIX", position: "insideBottomRight", fill: QUAD_COLORS.FIX, fontSize: 11, fontWeight: 700, opacity: 0.55 }} />
+                    <ReferenceArea x1={xScale === "log" ? 1 : 0} x2={medianX} y1={50} y2={100} fill={QUAD_COLORS.PROMOTE} fillOpacity={0.07} stroke="none" label={{ value: "PROMOTE", position: "insideTopLeft", fill: QUAD_COLORS.PROMOTE, fontSize: 12, fontWeight: 700, opacity: 0.55 }} />
+                    <ReferenceArea x1={medianX} x2={maxUnits} y1={50} y2={100} fill={QUAD_COLORS.STAR} fillOpacity={0.07} stroke="none" label={{ value: "STAR", position: "insideTopRight", fill: QUAD_COLORS.STAR, fontSize: 12, fontWeight: 700, opacity: 0.55 }} />
+                    <ReferenceArea x1={xScale === "log" ? 1 : 0} x2={medianX} y1={0} y2={50} fill={QUAD_COLORS.REMOVE} fillOpacity={0.07} stroke="none" label={{ value: "REMOVE", position: "insideBottomLeft", fill: QUAD_COLORS.REMOVE, fontSize: 12, fontWeight: 700, opacity: 0.55 }} />
+                    <ReferenceArea x1={medianX} x2={maxUnits} y1={0} y2={50} fill={QUAD_COLORS.FIX} fillOpacity={0.07} stroke="none" label={{ value: "FIX", position: "insideBottomRight", fill: QUAD_COLORS.FIX, fontSize: 12, fontWeight: 700, opacity: 0.55 }} />
                     <XAxis
                       type="number" dataKey="x" name="Units Sold"
                       scale={xScale} domain={xScale === "log" ? [1, maxUnits] : [0, maxUnits]} allowDataOverflow
                       ticks={xScale === "log" ? logTicks : undefined}
-                      tick={{ fontSize: 10 }} label={{ value: "Units Sold (popularity)", position: "insideBottom", offset: -4, style: { fontSize: 10 } }}
+                      tick={{ fontSize: 12 }} label={{ value: "Units Sold (popularity)", position: "insideBottom", offset: -4, style: { fontSize: 12 } }}
                     />
-                    <YAxis type="number" dataKey="y" name="Margin %" tick={{ fontSize: 10 }} unit="%" domain={[0, 100]} label={{ value: "Margin %", angle: -90, position: "insideLeft", style: { fontSize: 10 } }} />
+                    <YAxis type="number" dataKey="y" name="Margin %" tick={{ fontSize: 12 }} unit="%" domain={[0, 100]} label={{ value: "Margin %", angle: -90, position: "insideLeft", style: { fontSize: 12 } }} />
                     <ZAxis type="number" dataKey="revenue" range={[40, 700]} name="Revenue" />
-                    <ReferenceLine x={medianX} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "Median units", position: "top", style: { fontSize: 9 } }} />
-                    <ReferenceLine y={50} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "50% margin", position: "right", style: { fontSize: 9 } }} />
+                    <ReferenceLine x={medianX} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "Median units", position: "top", style: { fontSize: 12 } }} />
+                    <ReferenceLine y={50} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "50% margin", position: "right", style: { fontSize: 12 } }} />
                     <ChartTooltip
                       cursor={{ strokeDasharray: "3 3" }}
                       content={({ payload }) => {
@@ -312,7 +314,7 @@ export default function SalesPage() {
                             <p className="text-muted-foreground">{d.category}</p>
                             <p className="text-muted-foreground">Units: {d.x} · Orders: {d.orders} · Margin: {d.y?.toFixed(1)}%</p>
                             <p className="text-muted-foreground">Revenue: £{d.revenue?.toFixed(2)}</p>
-                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${QUAD_LABELS[d.classification]?.color}`}>{d.classification}</span>
+                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-xs font-semibold border ${QUAD_LABELS[d.classification]?.color}`}>{d.classification}</span>
                           </div>
                         )
                       }}
@@ -327,8 +329,8 @@ export default function SalesPage() {
               )}
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2">
                 {(["STAR", "PROMOTE", "FIX", "REMOVE"] as const).map((q) => (
-                  <div key={q} className="text-xs">
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-[11px]">
+                  <div key={q} className="text-sm">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-sm">
                       <span className="size-2.5 rounded-full" style={{ background: QUAD_COLORS[q] }} />
                       {q}
                     </span>
@@ -336,11 +338,11 @@ export default function SalesPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Note: uncosted items (no cost mapped) are excluded from this matrix and the tables below — map them in Name Review → Uncosted to include them.</p>
+              <p className="text-xs text-muted-foreground mt-2">Note: uncosted items (no cost mapped) are excluded from this matrix and the tables below — map them in Name Review → Uncosted to include them.</p>
 
               {/* Matrix calculation explanation */}
               <div className="mt-4 p-3 rounded-lg bg-secondary/60 border border-border text-xs text-muted-foreground space-y-1">
-                <p className="font-semibold text-foreground text-[11px]">How the Menu Engineering Matrix is calculated</p>
+                <p className="font-semibold text-foreground text-sm">How the Menu Engineering Matrix is calculated</p>
                 <p><strong>Popularity threshold</strong> — median units sold across all items in the period. Items at or above the median are "high popularity".</p>
                 <p><strong>Margin threshold</strong> — 50% gross margin. Items at or above 50% are "high margin" (revenue − food cost) ÷ revenue.</p>
                 <p><strong>STAR</strong> = high popularity ∩ high margin. Best performers — protect quality, keep visible. <strong>PROMOTE</strong> = low popularity ∩ high margin. Hidden gems — push via offers/bundles. <strong>FIX</strong> = high popularity ∩ low margin. Volume sellers hurting profit — reprice or rework recipe. <strong>REMOVE</strong> = low popularity ∩ low margin. Dead weight — consider removing or replacing.</p>
@@ -359,19 +361,19 @@ export default function SalesPage() {
                 return (
                   <Card key={q} style={{ borderTopColor: QUAD_COLORS[q], borderTopWidth: 3 }}>
                     <CardHeader className="pb-2 text-center">
-                      <CardTitle className="text-sm font-semibold flex items-center justify-center gap-2">
+                      <CardTitle className="text-base font-semibold flex items-center justify-center gap-2">
                         <span className="size-2.5 rounded-full" style={{ background: QUAD_COLORS[q] }} />
                         {q} — Top 10 by Order Frequency
                       </CardTitle>
-                      <CardDescription className="text-xs">{QUAD_LABELS[q].desc}</CardDescription>
+                      <CardDescription className="text-sm">{QUAD_LABELS[q].desc}</CardDescription>
                     </CardHeader>
                     <CardContent>
                       {list.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-4 text-center">No {q} items in this period</p>
+                        <p className="text-sm text-muted-foreground py-4 text-center">No {q} items in this period</p>
                       ) : (
                         <>
                           {/* Column headers */}
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground pb-1 border-b border-border mb-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground pb-1 border-b border-border mb-1">
                             <span className="w-4" />
                             <span className="flex-1">Item</span>
                             <span className="w-14 text-right">Orders</span>
@@ -393,7 +395,7 @@ export default function SalesPage() {
                               </div>
                             ))}
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-2">{QUAD_ACTION[q]}</p>
+                          <p className="text-xs text-muted-foreground mt-2">{QUAD_ACTION[q]}</p>
                         </>
                       )}
                     </CardContent>
@@ -409,14 +411,14 @@ export default function SalesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold">Top 10 by Revenue</CardTitle>
+                <CardTitle className="text-base font-semibold">Top 10 by Revenue</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-52 w-full" /> : (
                   <ChartContainer config={chartCfg} className="h-52 w-full">
                     <BarChart data={top10Revenue} layout="vertical" margin={{ left: 4 }}>
-                      <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={(v) => `£${v}`} />
-                      <YAxis type="category" dataKey="itemName" tick={{ fontSize: 9 }} width={110} tickFormatter={(v) => v.length > 16 ? v.substring(0, 16) + "…" : v} />
+                      <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
+                      <YAxis type="category" dataKey="itemName" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v.length > 16 ? v.substring(0, 16) + "…" : v} />
                       <ChartTooltip content={({ payload }) => payload?.[0] ? <div className="bg-popover border rounded p-2 text-xs"><p className="font-medium">{payload[0].payload.itemName}</p><p>£{num(payload[0].value).toFixed(2)}</p></div> : null} />
                       <Bar dataKey="totalRevenue" fill="var(--color-chart-1)" radius={3} name="Revenue" />
                     </BarChart>
@@ -426,14 +428,14 @@ export default function SalesPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2 text-center">
-                <CardTitle className="text-sm font-semibold">Top 10 by Units Sold</CardTitle>
+                <CardTitle className="text-base font-semibold">Top 10 by Units Sold</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? <Skeleton className="h-52 w-full" /> : (
                   <ChartContainer config={chartCfg} className="h-52 w-full">
                     <BarChart data={top10Units} layout="vertical" margin={{ left: 4 }}>
-                      <XAxis type="number" tick={{ fontSize: 9 }} />
-                      <YAxis type="category" dataKey="itemName" tick={{ fontSize: 9 }} width={110} tickFormatter={(v) => v.length > 16 ? v.substring(0, 16) + "…" : v} />
+                      <XAxis type="number" tick={{ fontSize: 12 }} />
+                      <YAxis type="category" dataKey="itemName" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v.length > 16 ? v.substring(0, 16) + "…" : v} />
                       <ChartTooltip content={({ payload }) => payload?.[0] ? <div className="bg-popover border rounded p-2 text-xs"><p className="font-medium">{payload[0].payload.itemName}</p><p>{num(payload[0].value).toFixed(0)} units</p></div> : null} />
                       <Bar dataKey="totalQty" fill="var(--color-chart-2)" radius={3} name="Units" />
                     </BarChart>
@@ -448,16 +450,16 @@ export default function SalesPage() {
         <TabsContent value="pareto" className="mt-4">
           <Card>
             <CardHeader className="pb-2 text-center">
-              <CardTitle className="text-sm font-semibold">Pareto — Top 20 Items by Revenue Contribution</CardTitle>
-              <CardDescription className="text-xs">Which items generate 80% of total revenue?</CardDescription>
+              <CardTitle className="text-base font-semibold">Pareto — Top 20 Items by Revenue Contribution</CardTitle>
+              <CardDescription className="text-sm">Which items generate 80% of total revenue?</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? <Skeleton className="h-64 w-full" /> : (
                 <ChartContainer config={{ ...chartCfg, cumPct: { label: "Cumulative %", color: "var(--color-chart-4)" } }} className="h-64 w-full">
                   <ComposedChart data={pareto} margin={{ left: 0, right: 24 }}>
-                    <XAxis dataKey="name" tick={{ fontSize: 8 }} angle={-35} textAnchor="end" height={50} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} unit="%" domain={[0, 100]} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-35} textAnchor="end" height={50} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} unit="%" domain={[0, 100]} />
                     <ChartTooltip content={({ payload }) => payload?.[0] ? (
                       <div className="bg-popover border rounded p-2 text-xs">
                         <p className="font-medium">{payload[0].payload.name}</p>
@@ -471,7 +473,7 @@ export default function SalesPage() {
                 </ChartContainer>
               )}
               {!loading && pareto.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Top {pareto.findIndex((p) => p.cumPct >= 80) + 1} items generate 80%+ of revenue
                   ({pareto.find((p) => p.cumPct >= 80)?.cumPct}% at item #{pareto.findIndex((p) => p.cumPct >= 80) + 1})
                 </p>
@@ -485,7 +487,7 @@ export default function SalesPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-4">
-                <CardTitle className="text-sm font-semibold">All Costed Items</CardTitle>
+                <CardTitle className="text-base font-semibold">All Costed Items</CardTitle>
                 <div className="relative w-52">
                   <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
                   <Input placeholder="Search item or category..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
@@ -499,30 +501,30 @@ export default function SalesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs">Item</TableHead>
-                      <TableHead className="text-xs">Category</TableHead>
-                      <TableHead className="text-xs">Class</TableHead>
-                      <TableHead className="text-xs text-right">Units</TableHead>
-                      <TableHead className="text-xs text-right">Revenue</TableHead>
-                      <TableHead className="text-xs text-right">Gross Profit</TableHead>
-                      <TableHead className="text-xs text-right">Margin %</TableHead>
+                      <TableHead className="text-sm">Item</TableHead>
+                      <TableHead className="text-sm">Category</TableHead>
+                      <TableHead className="text-sm">Class</TableHead>
+                      <TableHead className="text-sm text-right">Units</TableHead>
+                      <TableHead className="text-sm text-right">Revenue</TableHead>
+                      <TableHead className="text-sm text-right">Gross Profit</TableHead>
+                      <TableHead className="text-sm text-right">Margin %</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {classified.filter((i) => !search || i.itemName.toLowerCase().includes(search.toLowerCase())).map((item, i) => (
                       <TableRow key={i}>
-                        <TableCell className="text-xs font-medium">{item.itemName}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{item.categoryName || "—"}</TableCell>
-                        <TableCell className="text-xs">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${QUAD_LABELS[item.classification]?.color}`}>{item.classification}</span>
+                        <TableCell className="text-sm font-medium">{item.itemName}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{item.categoryName || "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-semibold border ${QUAD_LABELS[item.classification]?.color}`}>{item.classification}</span>
                         </TableCell>
-                        <TableCell className="text-xs text-right">{num(item.totalQty).toFixed(0)}</TableCell>
-                        <TableCell className="text-xs text-right">£{num(item.totalRevenue).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right">
-                          <span className={num(item.grossProfit) >= 0 ? "text-[oklch(0.7_0.15_150)]" : "text-destructive"}>£{num(item.grossProfit).toFixed(2)}</span>
+                        <TableCell className="text-sm text-right">{num(item.totalQty).toFixed(0)}</TableCell>
+                        <TableCell className="text-sm text-right">£{num(item.totalRevenue).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm text-right">
+                          <span className={num(item.grossProfit) >= 0 ? "text-success" : "text-destructive"}>£{num(item.grossProfit).toFixed(2)}</span>
                         </TableCell>
-                        <TableCell className="text-xs text-right">
-                          <span className={num(item.marginPercent) >= 60 ? "text-[oklch(0.7_0.15_150)]" : num(item.marginPercent) >= 40 ? "text-[oklch(0.75_0.18_75)]" : "text-destructive"}>
+                        <TableCell className="text-sm text-right">
+                          <span className={num(item.marginPercent) >= 60 ? "text-success" : num(item.marginPercent) >= 40 ? "text-warning" : "text-destructive"}>
                             {num(item.marginPercent).toFixed(1)}%
                           </span>
                         </TableCell>

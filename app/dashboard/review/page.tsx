@@ -113,7 +113,7 @@ function CanonicalCombobox({ value, options, onChange }: { value: string | null;
               >
                 {value === String(o.id) && <CheckCircle className="size-3 text-primary shrink-0" />}
                 <span className="flex-1 truncate">{o.canonicalName}</span>
-                {o.category && <span className="text-muted-foreground text-[10px] shrink-0">[{o.category}]</span>}
+                {o.category && <span className="text-muted-foreground text-xs shrink-0">[{o.category}]</span>}
               </button>
             ))}
             {filtered.length === 0 && <p className="px-3 py-3 text-xs text-muted-foreground text-center">No items match “{q}”</p>}
@@ -212,12 +212,12 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
   const methodBadge = (m: string | null) => {
     if (!m) return null
     if (m === "unmatched" || m.startsWith("unmatched:"))
-      return <Badge variant="destructive" className="text-[10px]">No match</Badge>
+      return <Badge variant="destructive" className="text-xs">No match</Badge>
     if (m === "fuzzy")
-      return <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">Fuzzy</Badge>
+      return <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">Fuzzy</Badge>
     if (m === "manual")
-      return <Badge variant="outline" className="text-[10px]">Manual</Badge>
-    return <Badge variant="secondary" className="text-[10px]">{m}</Badge>
+      return <Badge variant="outline" className="text-xs">Manual</Badge>
+    return <Badge variant="secondary" className="text-xs">{m}</Badge>
   }
 
   const fmtCost = (v: string | null) => v ? `£${parseFloat(v).toFixed(2)}` : null
@@ -280,7 +280,7 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
           <AlertTriangle className="size-3.5" />
           Review Queue
           {pending.length > 0 && (
-            <Badge variant="destructive" className="text-[10px] ml-1 h-4 px-1">{pending.length}</Badge>
+            <Badge variant="destructive" className="text-xs ml-1 h-4 px-1">{pending.length}</Badge>
           )}
         </button>
         <button
@@ -294,7 +294,7 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
           <PoundSterling className="size-3.5" />
           Uncosted
           {uncostedPending.length > 0 && (
-            <Badge variant="destructive" className="text-[10px] ml-1 h-4 px-1">{uncostedPending.length}</Badge>
+            <Badge variant="destructive" className="text-xs ml-1 h-4 px-1">{uncostedPending.length}</Badge>
           )}
         </button>
         <button
@@ -329,7 +329,7 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
               </div>
             ) : pending.length === 0 ? (
               <div className="py-16 text-center">
-                <CheckCircle className="size-8 text-[oklch(0.7_0.15_150)] mx-auto mb-3" />
+                <CheckCircle className="size-8 text-success mx-auto mb-3" />
                 <p className="text-sm font-medium text-foreground">All clear — no items need review.</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Run "Normalise Item Names" from the Data Sync page after each Presto sync.
@@ -364,16 +364,16 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
                           <span className="text-xs font-mono font-medium text-foreground truncate">
                             {row.normalizedRaw}
                           </span>
-                          {row.size && <Badge variant="secondary" className="text-[10px]">{row.size}"</Badge>}
-                          {row.variant && <Badge variant="secondary" className="text-[10px]">{row.variant}</Badge>}
+                          {row.size && <Badge variant="secondary" className="text-xs">{row.size}"</Badge>}
+                          {row.variant && <Badge variant="secondary" className="text-xs">{row.variant}</Badge>}
                           {methodBadge(row.matchMethod)}
-                          {conf && <span className="text-[10px] text-muted-foreground">{conf} confidence</span>}
+                          {conf && <span className="text-xs text-muted-foreground">{conf} confidence</span>}
                         </div>
                         {row.posCategoryName && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">POS category: {row.posCategoryName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">POS category: {row.posCategoryName}</p>
                         )}
                         {matchedCostLabel && (
-                          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">Cost: {matchedCostLabel}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">Cost: {matchedCostLabel}</p>
                         )}
                       </div>
 
@@ -428,7 +428,7 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
               </div>
             ) : uncostedPending.length === 0 ? (
               <div className="py-16 text-center">
-                <CheckCircle className="size-8 text-[oklch(0.7_0.15_150)] mx-auto mb-3" />
+                <CheckCircle className="size-8 text-success mx-auto mb-3" />
                 <p className="text-sm font-medium text-foreground">Every sold item has a cost.</p>
                 <p className="text-xs text-muted-foreground mt-1">Nothing left to map here.</p>
               </div>
@@ -456,15 +456,15 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-mono font-medium text-foreground truncate">{row.normalizedRaw}</span>
-                          <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">£{row.revenue.toFixed(2)} uncosted</Badge>
-                          <span className="text-[10px] text-muted-foreground">{row.qty} sold</span>
-                          {row.isModifier && <Badge variant="secondary" className="text-[10px]">modifier</Badge>}
+                          <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">£{row.revenue.toFixed(2)} uncosted</Badge>
+                          <span className="text-xs text-muted-foreground">{row.qty} sold</span>
+                          {row.isModifier && <Badge variant="secondary" className="text-xs">modifier</Badge>}
                         </div>
                         {row.posCategoryName && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">POS category: {row.posCategoryName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">POS category: {row.posCategoryName}</p>
                         )}
                         {matchedCostLabel && (
-                          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">Cost: {matchedCostLabel}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">Cost: {matchedCostLabel}</p>
                         )}
                       </div>
 
@@ -518,7 +518,7 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
                 <CardHeader className="pb-2 pt-4">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat}</CardTitle>
-                    <Badge variant="outline" className="text-[10px]">{items.length} items</Badge>
+                    <Badge variant="outline" className="text-xs">{items.length} items</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="pb-3">
@@ -544,24 +544,24 @@ export default function ReviewPage({ embedded = false }: { embedded?: boolean } 
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-medium text-foreground">{item.canonicalName}</span>
                               {item.itemType && (
-                                <Badge variant="secondary" className="text-[10px] capitalize">{item.itemType.replace("_", " ")}</Badge>
+                                <Badge variant="secondary" className="text-xs capitalize">{item.itemType.replace("_", " ")}</Badge>
                               )}
                               {!hasCost && (
-                                <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">No cost</Badge>
+                                <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">No cost</Badge>
                               )}
                             </div>
-                            {costLabel && <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{costLabel}</p>}
+                            {costLabel && <p className="text-xs text-muted-foreground mt-0.5 font-mono">{costLabel}</p>}
                           </div>
                           <div className="flex items-center gap-2 shrink-0 text-right">
                             {Number(item.aliasCount) > 0 ? (
                               <div className="flex items-center gap-1">
-                                <CheckCircle className="size-3 text-[oklch(0.7_0.15_150)]" />
-                                <span className="text-[10px] text-muted-foreground">{Number(item.aliasCount)} POS name{Number(item.aliasCount) !== 1 ? "s" : ""}</span>
+                                <CheckCircle className="size-3 text-success" />
+                                <span className="text-xs text-muted-foreground">{Number(item.aliasCount)} POS name{Number(item.aliasCount) !== 1 ? "s" : ""}</span>
                               </div>
                             ) : (
                               <div className="flex items-center gap-1">
                                 <XCircle className="size-3 text-destructive/60" />
-                                <span className="text-[10px] text-muted-foreground">No POS match</span>
+                                <span className="text-xs text-muted-foreground">No POS match</span>
                               </div>
                             )}
                           </div>
