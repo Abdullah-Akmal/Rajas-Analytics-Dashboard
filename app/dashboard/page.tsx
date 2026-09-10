@@ -224,7 +224,7 @@ export default function DashboardPage() {
           fail to add up to the unfiltered total. */}
       {coverage && coverage.unmappedRevenue > 0 &&
         (filters.brand !== "all" || filters.productType !== "all" || filters.category !== "all") && (
-        <p className="text-xs text-[oklch(0.75_0.18_75)]">
+        <p className="text-sm text-warning">
           Brand, product type and category cover {coverage.coveragePct.toFixed(0)}% of revenue.
           £{coverage.unmappedRevenue.toFixed(2)} across {coverage.unmappedItems} product
           {coverage.unmappedItems === 1 ? "" : "s"} is not mapped to any product yet, so it is
@@ -243,8 +243,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Daily Revenue Trend</CardTitle>
-            <CardDescription className="text-xs">Revenue over selected period</CardDescription>
+            <CardTitle className="text-base font-semibold">Daily Revenue Trend</CardTitle>
+            <CardDescription className="text-sm">Revenue over selected period</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -256,12 +256,12 @@ export default function DashboardPage() {
             ) : (
               <ChartContainer config={chartConfig} className="h-48 w-full">
                 <LineChart data={trend as Record<string, unknown>[]}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v?.slice(5)} />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(v) => v?.slice(5)} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   {filters.location === "all" ? (
                     <>
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
                       <Line type="monotone" dataKey="hydeParkRevenue" stroke="var(--color-chart-2)" strokeWidth={2} dot={false} name="Hyde Park" />
                       <Line type="monotone" dataKey="grandArcadeRevenue" stroke="var(--color-chart-4)" strokeWidth={2} dot={false} name="Grand Arcade" />
                     </>
@@ -276,8 +276,8 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Platform Breakdown</CardTitle>
-            <CardDescription className="text-xs">Revenue share by order channel</CardDescription>
+            <CardTitle className="text-base font-semibold">Platform Breakdown</CardTitle>
+            <CardDescription className="text-sm">Revenue share by order channel</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -305,7 +305,7 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value, name) => [`£${Number(value).toFixed(0)} · ${totalRev > 0 ? ((Number(value) / totalRev) * 100).toFixed(1) : 0}%`, name]}
-                      contentStyle={{ fontSize: 11, background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px" }}
+                      contentStyle={{ fontSize: 12, background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px" }}
                       labelStyle={{ display: "none" }}
                     />
                   </PieChart>
@@ -318,7 +318,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">£{p.totalRevenue.toFixed(0)}</span>
-                          <span className="text-muted-foreground text-[10px]">{totalRev > 0 ? ((p.totalRevenue / totalRev) * 100).toFixed(1) : 0}%</span>
+                          <span className="text-muted-foreground text-xs">{totalRev > 0 ? ((p.totalRevenue / totalRev) * 100).toFixed(1) : 0}%</span>
                         </div>
                       </div>
                     ))}
@@ -334,8 +334,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Category Revenue</CardTitle>
-            <CardDescription className="text-xs">Revenue share by menu category</CardDescription>
+            <CardTitle className="text-base font-semibold">Category Revenue</CardTitle>
+            <CardDescription className="text-sm">Revenue share by menu category</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -388,8 +388,8 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Top Items by Gross Profit</CardTitle>
-            <CardDescription className="text-xs">Top 10 items by gross profit £ (revenue − cost · costed items only)</CardDescription>
+            <CardTitle className="text-base font-semibold">Top Items by Gross Profit</CardTitle>
+            <CardDescription className="text-sm">Top 10 items by gross profit £ (revenue − cost · costed items only)</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -433,8 +433,8 @@ export default function DashboardPage() {
               return (
                 <ChartContainer config={chartConfig} className="h-48 w-full">
                   <BarChart data={chartItems} layout="vertical" margin={{ left: 4, right: 4 }}>
-                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
-                    <YAxis type="category" dataKey="itemName" tick={{ fontSize: 9 }} width={130} />
+                    <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
+                    <YAxis type="category" dataKey="itemName" tick={{ fontSize: 12 }} width={130} />
                     <ChartTooltip
                       content={({ payload }) => payload?.[0] ? (
                         <div className="bg-popover border border-border rounded-lg p-2 text-xs shadow">
@@ -460,15 +460,15 @@ export default function DashboardPage() {
       {/* Quick Status */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Locations</CardTitle>
+          <CardTitle className="text-base font-semibold">Locations</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-3">
             {["Hyde Park", "Grand Arcade"].map((loc) => (
               <div key={loc} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary">
-                <div className="size-2 rounded-full bg-[oklch(0.7_0.15_150)]" />
-                <span className="text-xs font-medium text-foreground">{loc}</span>
-                <Badge variant="outline" className="text-[10px]">Active</Badge>
+                <div className="size-2 rounded-full bg-success" />
+                <span className="text-sm font-medium text-foreground">{loc}</span>
+                <Badge variant="outline" className="text-xs">Active</Badge>
               </div>
             ))}
           </div>

@@ -91,7 +91,7 @@ export function RangeCoverageNotice({
 
   if (justFilled > 0) {
     return (
-      <p className="text-xs text-[oklch(0.7_0.15_150)] flex items-center gap-2">
+      <p className="text-xs text-success flex items-center gap-2">
         <CheckCircle className="size-3.5" />
         Fetched {justFilled} missing {justFilled === 1 ? "day" : "days"} for this range.
       </p>
@@ -101,14 +101,14 @@ export function RangeCoverageNotice({
   if (!checked || missing.length === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-[oklch(0.75_0.18_75)]">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-warning">
       <AlertTriangle className="size-3.5 shrink-0" />
       <span>
         {missing.length} {missing.length === 1 ? "day" : "days"} in this range
         {" "}({missing[0]}{missing.length > 1 ? ` → ${missing[missing.length - 1]}` : ""})
         {" "}have never been synced — those days currently read as zero.
       </span>
-      <Button size="sm" variant="outline" className="h-6 text-[11px]" onClick={manualFill}>
+      <Button size="sm" variant="outline" className="h-6 text-sm" onClick={manualFill}>
         <RefreshCw className="size-3 mr-1" />
         Fetch {missing.length > 31 ? "first 31 days" : "them now"}
       </Button>

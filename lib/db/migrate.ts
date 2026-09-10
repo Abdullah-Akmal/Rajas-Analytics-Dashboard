@@ -63,6 +63,11 @@ async function run() {
 
     // Add orderTime column to orders (idempotent)
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS "orderTime" TIMESTAMPTZ`)
+    // Presto's per-location order number (e.g. "2.20368"). Shipday's orderNumber ends
+    // with it ("80643_4719_2.20368"), which is how a delivery links to its POS order
+    // and so to live revenue, food cost and commission (Operations corrections item 21).
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS "orderNo" TEXT`)
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_location_orderno_idx ON orders (location, "orderNo")`)
     await client.query(`CREATE INDEX IF NOT EXISTS orders_order_time_idx ON orders("orderTime")`)
 
     // Add new columns to deliveries for on-time KPIs, distance, location analysis

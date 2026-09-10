@@ -5,6 +5,7 @@ import { syncGoogleSheets, syncPrestoData, syncShipdayData, getSyncLogs, clearSy
 import { syncCostingSheet, normaliseOrderItems } from "@/lib/normalise/actions"
 import { syncPricingSheet } from "@/lib/pricing/actions"
 import { buildProductMaster } from "@/lib/product-master/actions"
+import { OrderLineHealth } from "@/components/settings/order-line-health"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -132,7 +133,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
-                <Sheet className="size-4 text-[oklch(0.7_0.15_150)]" />
+                <Sheet className="size-4 text-success" />
               </div>
               <div>
                 <CardTitle className="text-sm">Google Sheets</CardTitle>
@@ -154,7 +155,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.sheets ? "Syncing..." : "Sync Now"}
             </Button>
             {messages.sheets && (
-              <p className={`text-xs ${messages.sheets.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.sheets.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.sheets}
               </p>
             )}
@@ -187,7 +188,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
                 <Input type="date" value={prestoStartDate} onChange={(e) => setPrestoStartDate(e.target.value)} className="h-8 text-xs" />
                 <Input type="date" value={prestoEndDate} onChange={(e) => setPrestoEndDate(e.target.value)} className="h-8 text-xs" />
               </div>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 ~{getDayCount() * 13}s estimated ({getDayCount() * 13 > 60 ? `${Math.ceil(getDayCount() * 13 / 60)} min` : `${getDayCount() * 13}s`})
               </p>
             </div>
@@ -221,7 +222,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               </Button>
             </div>
             {prestoProgress && (
-              <p className={`text-xs ${prestoProgress.startsWith("Error") ? "text-destructive" : (loading.presto_hp || loading.presto_ga) ? "text-muted-foreground animate-pulse" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${prestoProgress.startsWith("Error") ? "text-destructive" : (loading.presto_hp || loading.presto_ga) ? "text-muted-foreground animate-pulse" : "text-success"}`}>
                 {prestoProgress}
               </p>
             )}
@@ -233,7 +234,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
-                <Truck className="size-4 text-[oklch(0.6_0.15_200)]" />
+                <Truck className="size-4 text-info" />
               </div>
               <div>
                 <CardTitle className="text-sm">Shipday</CardTitle>
@@ -259,7 +260,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.shipday ? "Syncing..." : "Sync Deliveries"}
             </Button>
             {messages.shipday && (
-              <p className={`text-xs ${messages.shipday.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.shipday.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.shipday}
               </p>
             )}
@@ -297,7 +298,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.costing_sheet ? "Syncing…" : "Sync Costing Sheet"}
             </Button>
             {messages.costing_sheet && (
-              <p className={`text-xs ${messages.costing_sheet.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.costing_sheet.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.costing_sheet}
               </p>
             )}
@@ -309,7 +310,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
-                <Tag className="size-4 text-[oklch(0.7_0.15_60)]" />
+                <Tag className="size-4 text-warning" />
               </div>
               <div>
                 <CardTitle className="text-sm">Pricing Engine</CardTitle>
@@ -344,7 +345,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.pricing_sheet ? "Syncing…" : "Sync Pricing Sheet"}
             </Button>
             {messages.pricing_sheet && (
-              <p className={`text-xs ${messages.pricing_sheet.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.pricing_sheet.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.pricing_sheet}
               </p>
             )}
@@ -356,7 +357,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
-                <Boxes className="size-4 text-[oklch(0.7_0.15_280)]" />
+                <Boxes className="size-4 text-info" />
               </div>
               <div>
                 <CardTitle className="text-sm">Product Master</CardTitle>
@@ -392,7 +393,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.product_master ? "Building…" : "Rebuild Product Master"}
             </Button>
             {messages.product_master && (
-              <p className={`text-xs ${messages.product_master.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.product_master.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.product_master}
               </p>
             )}
@@ -404,7 +405,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-secondary flex items-center justify-center">
-                <GitMerge className="size-4 text-[oklch(0.6_0.15_200)]" />
+                <GitMerge className="size-4 text-info" />
               </div>
               <div>
                 <CardTitle className="text-sm">Normalise Item Names</CardTitle>
@@ -432,13 +433,16 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {loading.normalise ? "Normalising…" : "Run Normalisation"}
             </Button>
             {messages.normalise && (
-              <p className={`text-xs ${messages.normalise.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+              <p className={`text-xs ${messages.normalise.startsWith("Error") ? "text-destructive" : "text-success"}`}>
                 {messages.normalise}
               </p>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Data health for the POS lines (moved from the Basket page). */}
+      <OrderLineHealth />
 
       <Separator />
 
@@ -469,7 +473,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
             ]).map(({ scope, label, desc, danger }) => (
               <div key={scope} className={`flex flex-col gap-2 p-3 rounded-lg border ${danger ? "border-destructive/50 bg-destructive/5" : "border-border bg-secondary/40"}`}>
                 <p className="text-xs font-medium text-foreground">{label}</p>
-                <p className="text-[10px] text-muted-foreground leading-relaxed">{desc}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
                 {clearConfirm === scope ? (
                   <div className="flex gap-2 mt-1">
                     <Button
@@ -512,7 +516,7 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
           </div>
 
           {clearMsg && (
-            <p className={`text-xs ${clearMsg.startsWith("Error") ? "text-destructive" : "text-[oklch(0.7_0.15_150)]"}`}>
+            <p className={`text-xs ${clearMsg.startsWith("Error") ? "text-destructive" : "text-success"}`}>
               {clearMsg}
             </p>
           )}
@@ -539,15 +543,15 @@ export default function SyncPage({ embedded = false }: { embedded?: boolean } = 
               {logs.map((log) => (
                 <div key={log.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
                   {log.status === "success" ? (
-                    <CheckCircle className="size-4 text-[oklch(0.7_0.15_150)] shrink-0" />
+                    <CheckCircle className="size-4 text-success shrink-0" />
                   ) : (
                     <XCircle className="size-4 text-destructive shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium capitalize">{log.source.replace("_", " ")}</span>
-                      {log.location && <Badge variant="outline" className="text-[10px]">{log.location}</Badge>}
-                      <Badge variant={log.status === "success" ? "secondary" : "destructive"} className="text-[10px]">
+                      {log.location && <Badge variant="outline" className="text-xs">{log.location}</Badge>}
+                      <Badge variant={log.status === "success" ? "secondary" : "destructive"} className="text-xs">
                         {log.status}
                       </Badge>
                     </div>

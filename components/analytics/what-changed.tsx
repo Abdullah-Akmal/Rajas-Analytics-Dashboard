@@ -88,14 +88,14 @@ export function WhatChanged({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">What Changed?</CardTitle>
-        <CardDescription className="text-xs">
+        <CardTitle className="text-base font-semibold">What Changed?</CardTitle>
+        <CardDescription className="text-sm">
           {comparableLabel ?? "Movement against the comparable period"}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             No comparable baseline for this period yet — sync more history to see movement.
           </p>
         ) : (
@@ -103,15 +103,15 @@ export function WhatChanged({
             {rows.map((r) => {
               const Icon = r.direction === "up" ? TrendingUp : r.direction === "down" ? TrendingDown : Minus
               const color =
-                r.direction === "up" ? "text-[oklch(0.7_0.15_150)]"
+                r.direction === "up" ? "text-success"
                 : r.direction === "down" ? "text-destructive"
                 : "text-muted-foreground"
               return (
                 <div key={r.headline} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
                   <Icon className={`size-4 mt-0.5 shrink-0 ${color}`} />
                   <div className="flex flex-col">
-                    <span className="text-xs font-medium text-foreground">{r.headline}</span>
-                    <span className="text-[11px] text-muted-foreground">{r.evidence}</span>
+                    <span className="text-sm font-medium text-foreground">{r.headline}</span>
+                    <span className="text-sm text-muted-foreground">{r.evidence}</span>
                   </div>
                 </div>
               )

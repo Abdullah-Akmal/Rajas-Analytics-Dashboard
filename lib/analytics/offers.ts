@@ -52,12 +52,30 @@ export type OfferAnalyticsResult = {
   offersConfigured: number
 }
 
-/** Rules from §5 Offers settings decide Scale / Keep / Modify / Stop. */
+/**
+ * Scale / Keep / Modify / Stop, from the §5 Offers settings.
+ *
+ * Corrections items 34-37 and 40: a verdict may only be issued once the data
+ * supporting it exists. Previously any offer whose contribution-per-order fell below
+ * target dropped through to STOP — including offers whose contribution was computed
+ * from an ASSUMED 100% Raja's funding because no setup record existed. Condemning a
+ * promotion on an assumption is exactly what the brief forbids.
+ */
 function decideStatus(
-  o: { orders: number; contributionPerOrder: number; discountExposurePct: number; estIncremental: number | null },
+  o: {
+    orders: number
+    contributionPerOrder: number
+    discountExposurePct: number
+    estIncremental: number | null
+    /** False when funding split, baseline or setup record is missing. */
+    dataComplete: boolean
+  },
   t: { minSample: number; minContribution: number; maxDiscountPct: number },
 ): OfferStatus {
+  // Not enough evidence, or the inputs a verdict depends on are missing.
   if (o.orders < t.minSample) return "INSUFFICIENT_DATA"
+  if (!o.dataComplete) return "INSUFFICIENT_DATA"
+
   const profitable = o.contributionPerOrder >= t.minContribution
   const affordable = o.discountExposurePct <= t.maxDiscountPct * 100
   const incrementalPositive = o.estIncremental === null ? null : o.estIncremental > 0
@@ -65,6 +83,7 @@ function decideStatus(
   if (profitable && affordable && incrementalPositive !== false) return "SCALE"
   if (profitable && !affordable) return "MODIFY"
   if (profitable) return "KEEP"
+  // Only reachable with a real setup record, real funding split and enough orders.
   return "STOP"
 }
 
@@ -150,10 +169,14 @@ export async function getOfferAnalytics(
       // A true incremental figure needs a baseline comparison per offer, which needs
       // offer dates from a setup record. Null until then — never a guessed number.
       estIncremental: null as number | null,
+      // Item 40: without a setup record the funding split is unknown, so contribution
+      // is provisional and cannot support Scale/Keep/Modify/Stop.
+      dataComplete: Boolean(setup),
     }
     return {
       offerKey: `${r.cat}::${r.channel}`,
-      name: setup?.name ?? r.cat,
+      // Item 33: a POS category is a fallback, not a confirmed offer — say so.
+      name: setup?.name ?? `${r.cat} — Unmapped / No Offer Setup`,
       channel: r.channel,
       orders,
       revenue,

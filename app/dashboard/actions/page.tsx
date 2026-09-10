@@ -27,14 +27,14 @@ const PRIORITY_OPTS = ["high", "medium", "low"]
 const CATEGORY_OPTS = ["Pricing", "Offers", "Platform", "Delivery", "Menu", "Staffing", "Other"]
 
 function statusStyle(s: string) {
-  if (s === "done") return "bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)] border-[oklch(0.35_0.08_150)]"
-  if (s === "in_progress") return "bg-[oklch(0.22_0.08_220)] text-[oklch(0.65_0.15_220)] border-[oklch(0.35_0.08_220)]"
+  if (s === "done") return "bg-success-subtle text-success border-success-subtle"
+  if (s === "in_progress") return "bg-info text-info border-info"
   return "bg-secondary text-muted-foreground border-border"
 }
 function priorityStyle(p: string) {
   if (p === "high") return "bg-destructive/15 text-destructive border-destructive/30"
-  if (p === "medium") return "bg-[oklch(0.25_0.1_75)] text-[oklch(0.75_0.18_75)] border-[oklch(0.38_0.1_75)]"
-  return "bg-[oklch(0.22_0.08_220)] text-[oklch(0.65_0.15_220)] border-[oklch(0.35_0.08_220)]"
+  if (p === "medium") return "bg-warning-subtle text-warning border-warning-subtle"
+  return "bg-info text-info border-info"
 }
 
 export default function ActionsPage() {
@@ -261,7 +261,7 @@ export default function ActionsPage() {
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="text-muted-foreground">Open: <strong className="text-foreground">{openCount}</strong></span>
-              <span className="text-muted-foreground">Done: <strong className="text-[oklch(0.7_0.15_150)]">{doneCount}</strong></span>
+              <span className="text-muted-foreground">Done: <strong className="text-success">{doneCount}</strong></span>
               {overdue > 0 && <span className="text-destructive font-semibold">Overdue: {overdue}</span>}
             </div>
           </div>
@@ -270,25 +270,25 @@ export default function ActionsPage() {
           {/* manual add row */}
           <div className="flex items-end gap-2 mb-4 flex-wrap">
             <div className="flex-1 min-w-48">
-              <label className="text-[10px] text-muted-foreground">Action</label>
+              <label className="text-xs text-muted-foreground">Action</label>
               <Input value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} placeholder="New task…" className="h-8 text-xs" />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground">Owner</label>
+              <label className="text-xs text-muted-foreground">Owner</label>
               <Input value={newTask.owner} onChange={(e) => setNewTask({ ...newTask, owner: e.target.value })} placeholder="Name" className="h-8 text-xs w-28" />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground">Deadline</label>
+              <label className="text-xs text-muted-foreground">Deadline</label>
               <Input type="date" value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} className="h-8 text-xs w-36" />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block">Priority</label>
+              <label className="text-xs text-muted-foreground block">Priority</label>
               <select value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })} className="h-8 text-xs rounded-md border border-border bg-background px-2">
                 {PRIORITY_OPTS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block">Category</label>
+              <label className="text-xs text-muted-foreground block">Category</label>
               <select value={newTask.category} onChange={(e) => setNewTask({ ...newTask, category: e.target.value })} className="h-8 text-xs rounded-md border border-border bg-background px-2">
                 {CATEGORY_OPTS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -324,14 +324,14 @@ export default function ActionsPage() {
                     <TableRow key={t.id} className={savingId === t.id ? "opacity-60" : ""}>
                       <TableCell className="text-xs">
                         <p className={`font-medium ${t.status === "done" ? "line-through text-muted-foreground" : ""}`}>{t.title}</p>
-                        {t.detail && <p className="text-[10px] text-muted-foreground whitespace-pre-line mt-0.5">{t.detail}</p>}
+                        {t.detail && <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{t.detail}</p>}
                       </TableCell>
-                      <TableCell><Badge variant="outline" className="text-[10px]">{t.category}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="text-xs">{t.category}</Badge></TableCell>
                       <TableCell>
                         <select
                           value={t.priority}
                           onChange={(e) => patchItem(t.id, { priority: e.target.value })}
-                          className={`text-[10px] rounded-full border px-1.5 py-0.5 ${priorityStyle(t.priority)}`}
+                          className={`text-xs rounded-full border px-1.5 py-0.5 ${priorityStyle(t.priority)}`}
                         >
                           {PRIORITY_OPTS.map((p) => <option key={p} value={p}>{p}</option>)}
                         </select>
@@ -356,7 +356,7 @@ export default function ActionsPage() {
                         <select
                           value={t.status}
                           onChange={(e) => patchItem(t.id, { status: e.target.value })}
-                          className={`text-[11px] rounded-md border px-2 py-1 w-full ${statusStyle(t.status)}`}
+                          className={`text-sm rounded-md border px-2 py-1 w-full ${statusStyle(t.status)}`}
                         >
                           {STATUS_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
@@ -390,8 +390,8 @@ export default function ActionsPage() {
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: "High Priority", count: sorted.filter((a) => a.priority === "high").length, color: "text-destructive" },
-          { label: "Medium Priority", count: sorted.filter((a) => a.priority === "medium").length, color: "text-[oklch(0.75_0.18_75)]" },
-          { label: "Low Priority", count: sorted.filter((a) => a.priority === "low").length, color: "text-[oklch(0.6_0.15_200)]" },
+          { label: "Medium Priority", count: sorted.filter((a) => a.priority === "medium").length, color: "text-warning" },
+          { label: "Low Priority", count: sorted.filter((a) => a.priority === "low").length, color: "text-info" },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="p-4">
@@ -417,17 +417,17 @@ export default function ActionsPage() {
           {sorted.map((action, i) => {
             const tracked = trackedTitles.has(action.action)
             return (
-              <Card key={i} className={`border-l-2 ${action.priority === "high" ? "border-l-destructive" : action.priority === "medium" ? "border-l-[oklch(0.75_0.18_75)]" : "border-l-[oklch(0.6_0.15_200)]"}`}>
+              <Card key={i} className={`border-l-2 ${action.priority === "high" ? "border-l-destructive" : action.priority === "medium" ? "border-l-[var(--warning)]" : "border-l-[var(--info)]"}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 shrink-0 ${action.priority === "high" ? "text-destructive" : action.priority === "medium" ? "text-[oklch(0.75_0.18_75)]" : "text-[oklch(0.6_0.15_200)]"}`}>
+                    <div className={`mt-0.5 shrink-0 ${action.priority === "high" ? "text-destructive" : action.priority === "medium" ? "text-warning" : "text-info"}`}>
                       {action.icon}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <Badge variant={action.priority === "high" ? "destructive" : "secondary"} className="text-[10px]">{action.priority}</Badge>
-                        <Badge variant="outline" className="text-[10px]">{action.category}</Badge>
-                        {action.channel && <Badge variant="outline" className="text-[10px] font-semibold capitalize border-primary/40 text-primary">{action.channel}</Badge>}
+                        <Badge variant={action.priority === "high" ? "destructive" : "secondary"} className="text-xs">{action.priority}</Badge>
+                        <Badge variant="outline" className="text-xs">{action.category}</Badge>
+                        {action.channel && <Badge variant="outline" className="text-xs font-semibold capitalize border-primary/40 text-primary">{action.channel}</Badge>}
                       </div>
                       <p className="text-sm font-semibold text-foreground">{action.action}</p>
                       {action.detail && (
@@ -472,7 +472,7 @@ export default function ActionsPage() {
                 <ul className="flex flex-col gap-1">
                   {r.tasks.map((t, i) => (
                     <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                      <CheckCircle className="size-3 text-[oklch(0.7_0.15_150)] mt-0.5 shrink-0" />
+                      <CheckCircle className="size-3 text-success mt-0.5 shrink-0" />
                       {t}
                     </li>
                   ))}

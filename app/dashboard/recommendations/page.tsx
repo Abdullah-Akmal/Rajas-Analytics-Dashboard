@@ -50,9 +50,9 @@ const HOURS_LABEL: Record<string, string> = {
 }
 
 const PERIOD_COLOR = {
-  quiet: "oklch(0.65 0.15 220)",
-  mid: "oklch(0.7 0.15 150)",
-  peak: "oklch(0.8 0.2 50)",
+  quiet: "var(--info)",
+  mid: "var(--success)",
+  peak: "var(--warning)",
 } as const
 
 export default function RecommendationsPage() {
@@ -165,7 +165,7 @@ export default function RecommendationsPage() {
   const periodCards = [
     {
       key: "quiet", title: "Quiet Periods", icon: <Moon className="size-4" />,
-      accent: "border-l-[oklch(0.55_0.15_220)]", chip: "bg-[oklch(0.22_0.08_220)] text-[oklch(0.65_0.15_220)] border-[oklch(0.35_0.08_220)]",
+      accent: "border-l-[var(--info)]", chip: "bg-info text-info border-info",
       data: periods.quiet,
       push: promote.slice(0, 4),
       offers: ["Time-boxed % discount (e.g. 20% off) to pull demand forward", "“Quiet-hour” meal deal on high-margin items", "Free side with any main to drive footfall"],
@@ -173,7 +173,7 @@ export default function RecommendationsPage() {
     },
     {
       key: "mid", title: "Mid-Demand Periods", icon: <Sunrise className="size-4" />,
-      accent: "border-l-[oklch(0.6_0.15_150)]", chip: "bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)] border-[oklch(0.35_0.08_150)]",
+      accent: "border-l-[var(--success)]", chip: "bg-success-subtle text-success border-success-subtle",
       data: periods.mid,
       push: stars.slice(0, 4),
       offers: ["Bundle deals (main + side + drink) to lift average order value", "Upsell prompts at checkout", "Loyalty points double-up"],
@@ -181,7 +181,7 @@ export default function RecommendationsPage() {
     },
     {
       key: "peak", title: "Peak Periods", icon: <Sun className="size-4" />,
-      accent: "border-l-[oklch(0.65_0.18_50)]", chip: "bg-[oklch(0.25_0.1_50)] text-[oklch(0.8_0.2_50)] border-[oklch(0.4_0.1_50)]",
+      accent: "border-l-[var(--warning)]", chip: "bg-warning-subtle text-warning border-warning-subtle",
       data: periods.peak,
       push: stars.slice(0, 4),
       offers: ["Avoid discounts — demand is already high", "Premium add-ons & combo upgrades", "Push fastest-to-make high-margin items to protect throughput"],
@@ -219,15 +219,15 @@ export default function RecommendationsPage() {
                   <ChartContainer config={chartConfig} className="h-56 w-full">
                     <BarChart data={periods.chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.2} />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-40} textAnchor="end" height={44} />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 12 }} interval={0} angle={-40} textAnchor="end" height={44} />
+                      <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="orders" radius={3}>
                         {periods.chart.map((r, i) => <Cell key={i} fill={PERIOD_COLOR[r.period]} />)}
                       </Bar>
                     </BarChart>
                   </ChartContainer>
-                  <div className="flex flex-wrap items-center justify-center gap-4 mt-2 text-[10px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-center gap-4 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm" style={{ background: PERIOD_COLOR.quiet }} /> Quiet</span>
                     <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm" style={{ background: PERIOD_COLOR.mid }} /> Mid-demand</span>
                     <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm" style={{ background: PERIOD_COLOR.peak }} /> Peak</span>
@@ -259,35 +259,35 @@ export default function RecommendationsPage() {
                       <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-secondary/40 p-2 text-center">
                         <div>
                           <p className="text-sm font-bold text-foreground">{p.data.orders.toLocaleString()}</p>
-                          <p className="text-[9px] text-muted-foreground leading-tight">orders<br />({p.data.orderShare.toFixed(0)}% of day)</p>
+                          <p className="text-xs text-muted-foreground leading-tight">orders<br />({p.data.orderShare.toFixed(0)}% of day)</p>
                         </div>
                         <div>
                           <p className="text-sm font-bold text-foreground">£{p.data.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-                          <p className="text-[9px] text-muted-foreground leading-tight">revenue<br />({p.data.revShare.toFixed(0)}% of day)</p>
+                          <p className="text-xs text-muted-foreground leading-tight">revenue<br />({p.data.revShare.toFixed(0)}% of day)</p>
                         </div>
                         <div>
                           <p className="text-sm font-bold text-foreground">£{p.data.aov.toFixed(2)}</p>
-                          <p className="text-[9px] text-muted-foreground leading-tight">avg order<br />value</p>
+                          <p className="text-xs text-muted-foreground leading-tight">avg order<br />value</p>
                         </div>
                       </div>
                       <div>
-                        <p className="text-[11px] font-semibold text-foreground flex items-center gap-1 mb-1"><Package className="size-3" /> Items to push</p>
+                        <p className="text-sm font-semibold text-foreground flex items-center gap-1 mb-1"><Package className="size-3" /> Items to push</p>
                         <div className="flex flex-wrap gap-1">
-                          {p.push.length === 0 ? <span className="text-[10px] text-muted-foreground">No qualifying items</span> :
+                          {p.push.length === 0 ? <span className="text-xs text-muted-foreground">No qualifying items</span> :
                             p.push.map((it, i) => (
-                              <span key={i} className="text-[10px] bg-secondary rounded px-1.5 py-0.5">
+                              <span key={i} className="text-xs bg-secondary rounded px-1.5 py-0.5">
                                 {it.itemName} <span className="text-muted-foreground">({num(it.marginPercent).toFixed(0)}%)</span>
                               </span>
                             ))}
                         </div>
                       </div>
                       <div>
-                        <p className="text-[11px] font-semibold text-foreground flex items-center gap-1 mb-1"><Tag className="size-3" /> Offers to run</p>
+                        <p className="text-sm font-semibold text-foreground flex items-center gap-1 mb-1"><Tag className="size-3" /> Offers to run</p>
                         <ul className="flex flex-col gap-0.5">
-                          {p.offers.map((o, i) => <li key={i} className="text-[10px] text-muted-foreground flex gap-1"><span className="text-primary">•</span>{o}</li>)}
+                          {p.offers.map((o, i) => <li key={i} className="text-xs text-muted-foreground flex gap-1"><span className="text-primary">•</span>{o}</li>)}
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground border-t border-border pt-2">
+                      <div className="text-xs text-muted-foreground border-t border-border pt-2">
                         <span className="font-semibold text-foreground">Strategy: </span>{p.strategy}
                       </div>
                     </>
@@ -305,7 +305,7 @@ export default function RecommendationsPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {/* how it works + strategic impact */}
-              <div className="rounded-lg border border-border bg-secondary/40 p-3 text-[11px] text-muted-foreground flex flex-col gap-2">
+              <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground flex flex-col gap-2">
                 <p className="flex items-center gap-1 text-foreground font-semibold"><Info className="size-3.5" /> How this table is built &amp; why it matters</p>
                 <p><span className="font-medium text-foreground">How it works:</span> the <span className="font-medium">anchor</span> is one of your most-ordered items (pulled from basket analysis) — it already brings customers in on its own. Each anchor is paired with a distinct <span className="font-medium">high-margin add-on</span> (≥55% margin, proven to sell). The suggested combo price is the two items’ standalone total minus a 10% saving to make the deal attractive.</p>
                 <p><span className="font-medium text-foreground">Strategic impact:</span> the discount is funded by the add-on’s margin headroom, so profit per order still <span className="font-medium">rises</span> even after the 10% off. You use a popular item as free traffic to move a profitable-but-under-exposed item — this grows average order value, shifts your product mix toward high-margin lines, and trains customers to buy in bundles rather than single items. Run these as the “bundle deals” referenced in the mid-demand and quiet-period plans above.</p>
@@ -329,10 +329,10 @@ export default function RecommendationsPage() {
                       <TableRow key={i}>
                         <TableCell className="text-xs font-medium">{b.anchor}</TableCell>
                         <TableCell className="text-xs">{b.addon}</TableCell>
-                        <TableCell className="text-xs text-right text-[oklch(0.7_0.15_150)]">{b.addonMargin.toFixed(0)}%</TableCell>
+                        <TableCell className="text-xs text-right text-success">{b.addonMargin.toFixed(0)}%</TableCell>
                         <TableCell className="text-xs text-right text-muted-foreground">£{b.standalone.toFixed(2)}</TableCell>
                         <TableCell className="text-xs text-right font-semibold">£{b.comboPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-xs text-right text-[oklch(0.7_0.15_150)]">£{(b.standalone - b.comboPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-xs text-right text-success">£{(b.standalone - b.comboPrice).toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

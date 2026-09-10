@@ -29,7 +29,7 @@ function num(v: unknown) { return Number(v ?? 0) }
 function busyLabel(revenue: number, maxRevenue: number): { label: string; color: string } {
   const pct = maxRevenue > 0 ? revenue / maxRevenue : 0
   if (pct >= 0.85) return { label: "Busy", color: "bg-destructive/20 text-destructive border-destructive/30" }
-  if (pct >= 0.65) return { label: "Active", color: "bg-[oklch(0.25_0.1_75)] text-[oklch(0.75_0.18_75)] border-[oklch(0.38_0.1_75)]" }
+  if (pct >= 0.65) return { label: "Active", color: "bg-warning-subtle text-warning border-warning-subtle" }
   if (pct >= 0.4) return { label: "Moderate", color: "bg-secondary text-foreground border-border" }
   return { label: "Quiet", color: "bg-muted/50 text-muted-foreground border-border" }
 }
@@ -145,11 +145,11 @@ export default function ForecastPage() {
                 const busy = busyLabel(day.forecastRevenue, maxForecast)
                 return (
                   <div key={i} className="flex flex-col items-center p-2 rounded-lg bg-secondary gap-1">
-                    <p className="text-[10px] text-muted-foreground font-medium">{day.dow}</p>
-                    <p className="text-[9px] text-muted-foreground">{day.date.split(" ").slice(1).join(" ")}</p>
+                    <p className="text-xs text-muted-foreground font-medium">{day.dow}</p>
+                    <p className="text-xs text-muted-foreground">{day.date.split(" ").slice(1).join(" ")}</p>
                     <p className="text-sm font-bold text-foreground mt-0.5">£{day.forecastRevenue.toFixed(0)}</p>
-                    <p className="text-[9px] text-muted-foreground">{day.forecastOrders.toFixed(0)} orders</p>
-                    <span className={`text-[9px] px-1 py-0.5 rounded border font-medium mt-0.5 ${busy.color}`}>{busy.label}</span>
+                    <p className="text-xs text-muted-foreground">{day.forecastOrders.toFixed(0)} orders</p>
+                    <span className={`text-xs px-1 py-0.5 rounded border font-medium mt-0.5 ${busy.color}`}>{busy.label}</span>
                   </div>
                 )
               })}
@@ -167,8 +167,8 @@ export default function ForecastPage() {
           {loading ? <Skeleton className="h-44 w-full" /> : (
             <ChartContainer config={chartCfg} className="h-44 w-full">
               <BarChart data={next7} margin={{ left: 0 }}>
-                <XAxis dataKey="dow" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                <XAxis dataKey="dow" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                 <ChartTooltip content={({ payload }) => payload?.[0] ? (
                   <div className="bg-popover border rounded p-2 text-xs">
                     <p className="font-medium">{payload[0].payload.date}</p>
@@ -202,8 +202,8 @@ export default function ForecastPage() {
           ) : (
             <ChartContainer config={chartCfg} className="h-44 w-full">
               <BarChart data={dowPattern} margin={{ left: 0 }}>
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                 <ChartTooltip content={({ payload }) => payload?.[0] ? (
                   <div className="bg-popover border rounded p-2 text-xs">
                     <p className="font-medium">{payload[0].payload.day}</p>
@@ -235,8 +235,8 @@ export default function ForecastPage() {
             <ChartContainer config={chartCfg} className="h-44 w-full">
               <LineChart data={recentTrend} margin={{ left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fontSize: 8 }} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                 <ChartTooltip content={({ payload }) => payload?.[0] ? (
                   <div className="bg-popover border rounded p-2 text-xs">
                     <p className="font-medium">{payload[0].payload.date}</p>
@@ -262,18 +262,18 @@ export default function ForecastPage() {
             <div className="flex flex-col gap-2 text-xs">
               {busiest && (
                 <div className="flex gap-2">
-                  <Badge variant="destructive" className="text-[10px] shrink-0">Busy</Badge>
+                  <Badge variant="destructive" className="text-xs shrink-0">Busy</Badge>
                   <span><strong>{busiest.dowFull}</strong> is forecast as the busiest day (£{busiest.forecastRevenue.toFixed(0)}, {busiest.forecastOrders.toFixed(0)} orders) — ensure full staffing and pre-prep.</span>
                 </div>
               )}
               {quietest && quietest.forecastRevenue < maxForecast * 0.4 && (
                 <div className="flex gap-2">
-                  <Badge variant="outline" className="text-[10px] shrink-0">Quiet</Badge>
+                  <Badge variant="outline" className="text-xs shrink-0">Quiet</Badge>
                   <span><strong>{quietest.dowFull}</strong> is forecast quiet (£{quietest.forecastRevenue.toFixed(0)}) — consider reduced staffing or training shifts.</span>
                 </div>
               )}
               <div className="flex gap-2">
-                <Badge variant="outline" className="text-[10px] shrink-0">Note</Badge>
+                <Badge variant="outline" className="text-xs shrink-0">Note</Badge>
                 <span>Forecast is based on historical averages only. Promotions, events, and weather will affect actuals — check alerts daily.</span>
               </div>
             </div>

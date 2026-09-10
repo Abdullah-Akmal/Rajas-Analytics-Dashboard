@@ -20,7 +20,7 @@ type Candidate = { cat: string; revenue: string; discount: string }
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1">
-    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+    <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
     {children}
   </div>
 )
@@ -131,14 +131,14 @@ export function OfferSetupPanel() {
 
           {candidates.length > 0 && (
             <div className="mt-4">
-              <p className="text-[11px] text-muted-foreground mb-1.5">
+              <p className="text-sm text-muted-foreground mb-1.5">
                 POS categories currently carrying discounts — click to fill the mapping field:
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {candidates.slice(0, 12).map((c) => (
                   <Badge
                     key={c.cat} variant="outline"
-                    className="text-[10px] cursor-pointer hover:bg-secondary"
+                    className="text-xs cursor-pointer hover:bg-secondary"
                     onClick={() => setForm((f) => ({
                       ...f,
                       posCategories: f.posCategories ? `${f.posCategories}, ${c.cat}` : c.cat,

@@ -9,45 +9,16 @@ import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm"
 const dateGte = (col: any, d: string) => sql`${col}::date >= ${d}::date`
 const dateLte = (col: any, d: string) => sql`${col}::date <= ${d}::date`
 
-// ─── Sales-channel bucket filter ─────────────────────────────────────────────
-// Splits orders into three buckets by orderChannel (every order/line carries one):
-//   • instore   → "wix"   (in-house EPOS: walk-in, dine-in, phone)
-//   • website   → "eatpresto" (own online-ordering storefront)
-//   • platforms → uber eats / deliveroo / just eat (third-party delivery apps)
-// "all" (or undefined) applies no filter. Works for both query styles: pass a Drizzle
-// column (orders.orderChannel) OR a raw sql expression (sql`oi."orderChannel"`).
-const CHANNEL_MAP: Record<string, string[]> = {
-  instore: ["wix"],
-  website: ["eatpresto"],
-  platforms: ["ubereats", "deliveroo", "justeat"],
-}
-function channelCondition(channelCol: any, channel?: string | null) {
-  if (!channel || channel === "all") return undefined
-  const vals = CHANNEL_MAP[channel]
-  if (!vals || vals.length === 0) return undefined
-  return sql`LOWER(${channelCol}) IN (${sql.join(vals.map((v) => sql`${v}`), sql`, `)})`
-}
-
-// ─── Fulfilment-mode and order-platform filters ──────────────────────────────
-// mode     — how the order is fulfilled: walk_in / collection / delivery / dine_in
-// platform — where it was taken: "walk in" / phone / online (Presto also offers
-//            kiosk + future table, but no such rows exist in this data yet)
-// Both are compared case-insensitively with spaces normalised to underscores, so
-// the stored "walk in" (platform) and "walk_in" (mode) both match a `walk_in` key.
-const slug = (col: any) => sql`LOWER(REPLACE(TRIM(${col}), ' ', '_'))`
-function modeCondition(modeCol: any, mode?: string | null) {
-  if (!mode || mode === "all") return undefined
-  return sql`${slug(modeCol)} = ${mode}`
-}
-function platformCondition(platformCol: any, platform?: string | null) {
-  if (!platform || platform === "all") return undefined
-  return sql`${slug(platformCol)} = ${platform}`
-}
-// order_items has no platform column, so filter item lines by their parent order.
-function platformItemCondition(orderIdCol: any, platform?: string | null) {
-  if (!platform || platform === "all") return undefined
-  return sql`EXISTS (SELECT 1 FROM orders po WHERE po."orderId" = ${orderIdCol} AND ${slug(sql`po.platform`)} = ${platform})`
-}
+// Sales-channel / fulfilment-mode / order-platform / Product Master slicers and
+// normKey live in lib/db/slicers.ts — shared with lib/analytics and lib/operations so
+// the filters cannot drift between pages. See that file for the channel buckets.
+import {
+  normKey, pmSlicers, rawPmSlicers, orderSlicers, itemSlicers, rawItemSlicers, rawOrderSlicers,
+} from "@/lib/db/slicers"
+import type { PmFilters as SlicerPmFilters } from "@/lib/db/slicers"
+// A local alias, not `export type { … }`: the "use server" transform treats a
+// re-export as a runtime value and the build fails with "PmFilters is not defined".
+export type PmFilters = SlicerPmFilters
 
 // ─── Comparable-period clamp (spec §6/§11) ───────────────────────────────────
 // When the current window is still trading, both windows must be cut at the same
@@ -62,71 +33,6 @@ function elapsedClamp(timeCol: any, finalDay: string, cutoffSeconds: number | nu
   )`
 }
 
-// ─── Product Master slicers: brand / product type / category (spec §11) ──────
-// These dimensions live on product_master, not on order_items, so they filter via an
-// EXISTS on the alias→product-master chain. §11 is explicit that filters must change
-// the underlying CALCULATION — "do not calculate all brands together and merely hide
-// rows after calculation" — which is exactly what an EXISTS predicate does.
-export type PmFilters = { brand?: string; productType?: string; category?: string }
-
-function pmExists(itemNameCol: any, f?: PmFilters) {
-  if (!f) return undefined
-  const preds: any[] = []
-  if (f.brand && f.brand !== "all") preds.push(sql`pm.brand = ${f.brand}`)
-  if (f.productType && f.productType !== "all") preds.push(sql`pm."productType" = ${f.productType}`)
-  if (f.category && f.category !== "all") preds.push(sql`pm.category = ${f.category}`)
-  if (preds.length === 0) return undefined
-  return sql`EXISTS (
-    SELECT 1 FROM item_alias ia_f
-      JOIN product_master pm ON pm.id = ia_f."productMasterId"
-     WHERE lower(ia_f."normalizedRaw") = ${normKey(itemNameCol)}
-       AND ${sql.join(preds, sql` AND `)})`
-}
-
-/** Product-master slicers for a Drizzle order_items query. */
-function pmSlicers(f?: PmFilters) {
-  const c = pmExists(orderItems.itemName, f)
-  return c ? [c] : []
-}
-/** Same, as a raw ` AND …` fragment for hand-written SQL. Pass the table alias. */
-function rawPmSlicers(alias: string, f?: PmFilters) {
-  const c = pmExists(sql.raw(`${alias}."itemName"`), f)
-  return c ? sql` AND ${c}` : sql``
-}
-
-/** Slicer conditions for an ORDERS-based query (Drizzle condition array style). */
-function orderSlicers(channel?: string, mode?: string, platform?: string) {
-  const out: any[] = []
-  const c = channelCondition(orders.orderChannel, channel); if (c) out.push(c)
-  const m = modeCondition(orders.mode, mode); if (m) out.push(m)
-  const p = platformCondition(orders.platform, platform); if (p) out.push(p)
-  return out
-}
-/** Slicer conditions for an ORDER_ITEMS-based query (Drizzle condition array style). */
-function itemSlicers(channel?: string, mode?: string, platform?: string) {
-  const out: any[] = []
-  const c = channelCondition(orderItems.orderChannel, channel); if (c) out.push(c)
-  const m = modeCondition(orderItems.mode, mode); if (m) out.push(m)
-  const p = platformItemCondition(orderItems.orderId, platform); if (p) out.push(p)
-  return out
-}
-/** Same slicers as a raw ` AND …` fragment, for hand-written SQL. Pass the table alias. */
-function rawItemSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
-  const parts = [
-    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
-    modeCondition(sql.raw(`${alias}.mode`), mode),
-    platformItemCondition(sql.raw(`${alias}."orderId"`), platform),
-  ].filter(Boolean)
-  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
-}
-function rawOrderSlicers(alias: string, channel?: string, mode?: string, platform?: string) {
-  const parts = [
-    channelCondition(sql.raw(`${alias}."orderChannel"`), channel),
-    modeCondition(sql.raw(`${alias}.mode`), mode),
-    platformCondition(sql.raw(`${alias}.platform`), platform),
-  ].filter(Boolean)
-  return parts.length ? sql` AND ${sql.join(parts as any[], sql` AND `)}` : sql``
-}
 
 // ─── Reviewed-cost resolution (normalisation layer) ──────────────────────────
 // Reports cost POS lines through the human-reviewed item_alias → dim_costing_item
@@ -146,8 +52,7 @@ function rawOrderSlicers(alias: string, channel?: string, mode?: string, platfor
 // it is specifically the \s class shorthand that does not. Because both sides are lowercased and
 // the typo fixes are applied identically, LOWER(item_alias."normalizedRaw") equals
 // normKey(order_items."itemName") for every mapped line — an exact join.
-const normKey = (col: any) =>
-  sql`regexp_replace(regexp_replace(regexp_replace(lower(btrim(${col})), '[[:space:]]+', ' ', 'g'), '\\msundays?\\M', 'sundae', 'g'), '\\mperi peri\\M', 'piri piri', 'g')`
+// (normKey itself is defined in lib/db/slicers.ts and imported above.)
 
 // ── Deduped per-key cost lookup ──────────────────────────────────────────────
 // item_alias stores the RAW POS spelling, so several near-duplicate rows (case /
@@ -469,6 +374,7 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
         customerId: sale.customerId?.toString() || null,
         vatAmount: sale.vatAmount?.toString() || "0",
         orderTime: validTime,
+        orderNo: sale.orderNo?.toString() || null,
       })
 
       const saleItems = sale.saleItems || sale.items || []
@@ -510,6 +416,7 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
             totalAmount: sql`EXCLUDED."totalAmount"`,
             cancelled: sql`EXCLUDED.cancelled`,
             orderTime: sql`EXCLUDED."orderTime"`,
+            orderNo: sql`EXCLUDED."orderNo"`,
           },
         })
     }
@@ -539,7 +446,9 @@ export async function syncPrestoData(dateStr: string, locationKey: "HYDE_PARK" |
       recordsProcessed: orderCount,
     })
 
-    revalidatePath("/dashboard")
+    // The data is already written. revalidatePath throws outside a Next request
+    // (CLI backfill scripts), which used to log a false "error" row after a good sync.
+    try { revalidatePath("/dashboard") } catch {}
     return { success: true, orders: orderCount, items: itemCount }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error"
@@ -691,7 +600,8 @@ export async function syncShipdayData(startDate: string, endDate: string) {
     }
 
     await db.insert(syncLogs).values({ source: "shipday", status: "success", recordsProcessed: rows.length })
-    revalidatePath("/dashboard")
+    // Data is written; revalidatePath throws outside a Next request (CLI backfills).
+    try { revalidatePath("/dashboard") } catch {}
     return { success: true, count: rows.length }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error"

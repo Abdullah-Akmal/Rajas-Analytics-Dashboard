@@ -53,8 +53,8 @@ const analyticsItems = [
 const operationsItems = [
   { label: "Hourly Demand", href: "/dashboard/demand", icon: Clock },
   { label: "Delivery & Drivers", href: "/dashboard/delivery", icon: Truck },
-  { label: "Basket & Upsell", href: "/dashboard/basket", icon: ShoppingBag },
-  { label: "Customer Insights", href: "/dashboard/customers", icon: Users },
+  { label: "Basket Growth", href: "/dashboard/basket", icon: ShoppingBag },
+  { label: "Direct Customers", href: "/dashboard/customers", icon: Users },
 ]
 
 const intelligenceItems = [
@@ -77,7 +77,7 @@ function NavItem({ item, pathname }: { item: { label: string; href: string; icon
           <Badge
             variant={item.badgeVariant ?? "outline"}
             className={cn(
-              "ml-auto text-[10px] px-1.5 py-0",
+              "ml-auto text-xs px-1.5 py-0",
               item.badgeVariant === "outline" && "border-amber-500 text-amber-600"
             )}
           >

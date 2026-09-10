@@ -4,8 +4,10 @@ import { useEffect, useState } from "react"
 import { getResolvedSettings, updateSetting, type ResolvedSetting } from "@/lib/settings/actions"
 import {
   SETTINGS, SETTING_GROUPS, STORES, CHANNELS, CHANNEL_LABELS,
-  scopeId, toDisplay, fromDisplay, unitSuffix, type SettingDef, type SettingGroup,
+  scopeId, toDisplay, fromDisplay, unitSuffix, isNumeric,
+  type SettingDef, type SettingGroup,
 } from "@/lib/settings/catalog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -27,19 +29,29 @@ export function AnalyticsSettingsPanel() {
     const d: Draft = {}
     for (const row of r) {
       const def = SETTINGS.find((s) => s.key === row.key)
-      if (def) d[scopeId(row.key, row.store, row.channel)] = String(toDisplay(def, row.value))
+      if (!def) continue
+      d[scopeId(row.key, row.store, row.channel)] = isNumeric(def)
+        ? String(toDisplay(def, Number(row.value)))
+        : String(row.value)
     }
     setDraft(d)
     setLoading(false)
   }
   useEffect(() => { load() }, [])
 
-  const commit = async (def: SettingDef, store: string | null, channel: string | null) => {
+  const commit = async (def: SettingDef, store: string | null, channel: string | null, override?: string) => {
     const id = scopeId(def.key, store, channel)
-    const shown = parseFloat(draft[id])
-    if (Number.isNaN(shown)) return
+    const rawValue = override ?? draft[id]
+    let toStore: number | string
+    if (isNumeric(def)) {
+      const shown = parseFloat(rawValue)
+      if (Number.isNaN(shown)) return
+      toStore = fromDisplay(def, shown)
+    } else {
+      toStore = rawValue
+    }
     setSaving((p) => ({ ...p, [id]: true }))
-    const res = await updateSetting(def.key, store, channel, fromDisplay(def, shown))
+    const res = await updateSetting(def.key, store, channel, toStore)
     setSaving((p) => ({ ...p, [id]: false }))
     if (res.success) {
       setSaved((p) => ({ ...p, [id]: true }))
@@ -64,7 +76,45 @@ export function AnalyticsSettingsPanel() {
   }) => {
     const id = scopeId(def.key, store, channel)
     const row = find(def.key, store, channel)
-    const dirty = row ? String(toDisplay(def, row.value)) !== draft[id] : false
+    const dirty = row
+      ? (isNumeric(def) ? String(toDisplay(def, Number(row.value))) : String(row.value)) !== draft[id]
+      : false
+    if (!isNumeric(def)) {
+      const opts = def.unit === "boolean"
+        ? [{ value: "1", label: "Yes" }, { value: "0", label: "No" }]
+        : def.options ?? []
+      return (
+        <div className="flex items-center gap-3 py-2">
+          <div className="w-40 shrink-0 text-xs text-muted-foreground">{label}</div>
+          <Select
+            value={draft[id] ?? ""}
+            onValueChange={(v) => {
+              if (!v) return
+              setDraft((p) => ({ ...p, [id]: v }))
+              commit(def, store, channel, v)
+            }}
+          >
+            <SelectTrigger className="h-8 text-sm w-64"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {row && (
+            <Badge variant={row.source === "override" ? "default" : "outline"} className="text-xs px-1.5 py-0">
+              {row.source === "override" ? "Edited" : row.source === "sheet" ? "From sheet" : "Default"}
+            </Badge>
+          )}
+          {saving[id] && <span className="text-xs text-muted-foreground">saving…</span>}
+          {saved[id] && <Check className="size-3.5 text-success" />}
+          {row?.source === "override" && (
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => reset(def, store, channel)}>
+              <RotateCcw className="size-3 mr-1" /> Reset
+            </Button>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center gap-3 py-2">
         <div className="w-40 shrink-0 text-xs text-muted-foreground">{label}</div>
@@ -77,23 +127,23 @@ export function AnalyticsSettingsPanel() {
             onKeyDown={(e) => { if (e.key === "Enter") commit(def, store, channel) }}
             inputMode="decimal"
           />
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
             {unitSuffix(def)}
           </span>
         </div>
         {row && (
           <Badge
             variant={row.source === "override" ? "default" : "outline"}
-            className="text-[10px] px-1.5 py-0"
+            className="text-xs px-1.5 py-0"
           >
             {row.source === "override" ? "Edited" : row.source === "sheet" ? "From sheet" : "Default"}
           </Badge>
         )}
-        {saving[id] && <span className="text-[10px] text-muted-foreground">saving…</span>}
-        {saved[id] && <Check className="size-3.5 text-[oklch(0.7_0.15_150)]" />}
+        {saving[id] && <span className="text-xs text-muted-foreground">saving…</span>}
+        {saved[id] && <Check className="size-3.5 text-success" />}
         {row?.source === "override" && (
           <Button
-            size="sm" variant="ghost" className="h-7 px-2 text-[10px]"
+            size="sm" variant="ghost" className="h-7 px-2 text-xs"
             onClick={() => reset(def, store, channel)}
             title="Clear the override and fall back to the sheet or default"
           >
@@ -132,7 +182,7 @@ export function AnalyticsSettingsPanel() {
                 <div key={def.key} className="py-2 first:pt-0 last:pb-0">
                   <div className="flex flex-col gap-0.5 mb-1">
                     <span className="text-sm font-medium text-foreground">{def.label}</span>
-                    {def.help && <span className="text-[11px] text-muted-foreground">{def.help}</span>}
+                    {def.help && <span className="text-sm text-muted-foreground">{def.help}</span>}
                   </div>
                   {def.scope === "global" && (
                     <Field def={def} store={null} channel={null} label="All stores" />
@@ -142,7 +192,7 @@ export function AnalyticsSettingsPanel() {
                   ))}
                   {def.scope === "perChannel" && STORES.map((s) => (
                     <div key={s} className="mt-1">
-                      <div className="text-[11px] font-medium text-foreground/80 mt-2">{s}</div>
+                      <div className="text-sm font-medium text-foreground/80 mt-2">{s}</div>
                       {CHANNELS.map((c) => (
                         <Field key={c} def={def} store={s} channel={c} label={CHANNEL_LABELS[c]} />
                       ))}

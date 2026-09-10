@@ -113,7 +113,7 @@ export default function OffersPage() {
             <CardContent className="p-4 flex items-center gap-3">
               <div className={`size-9 rounded-lg flex items-center justify-center ${k.danger ? "bg-destructive/15 text-destructive" : "bg-secondary text-primary"}`}>{k.icon}</div>
               <div>
-                <p className="text-xs text-muted-foreground">{k.label}</p>
+                <p className="text-sm text-muted-foreground">{k.label}</p>
                 {loading ? <Skeleton className="h-6 w-20 mt-1" /> : (
                   <p className={`text-lg font-bold ${k.danger ? "text-destructive" : "text-foreground"}`}>{k.value}</p>
                 )}
@@ -127,14 +127,14 @@ export default function OffersPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Discount by Channel</CardTitle>
+            <CardTitle className="text-base font-semibold">Discount by Channel</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <Skeleton className="h-44 w-full" /> : (
               <ChartContainer config={chartCfg} className="h-44 w-full">
                 <BarChart data={byChannel} margin={{ left: 0 }}>
-                  <XAxis dataKey="channel" tick={{ fontSize: 9 }} />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                  <XAxis dataKey="channel" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                   <ChartTooltip content={({ payload }) => payload?.[0] ? (
                     <div className="bg-popover border rounded p-2 text-xs">
                       <p className="font-medium">{payload[0].payload.channel}</p>
@@ -153,15 +153,15 @@ export default function OffersPage() {
 
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Discount Rate % by Channel</CardTitle>
-            <CardDescription className="text-xs">Discount as % of channel revenue</CardDescription>
+            <CardTitle className="text-base font-semibold">Discount Rate % by Channel</CardTitle>
+            <CardDescription className="text-sm">Discount as % of channel revenue</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? <Skeleton className="h-44 w-full" /> : (
               <ChartContainer config={chartCfg} className="h-44 w-full">
                 <BarChart data={byChannel} margin={{ left: 0 }}>
-                  <XAxis dataKey="channel" tick={{ fontSize: 9 }} />
-                  <YAxis tick={{ fontSize: 10 }} unit="%" domain={[0, 50]} />
+                  <XAxis dataKey="channel" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} unit="%" domain={[0, 50]} />
                   <ChartTooltip content={({ payload }) => payload?.[0] ? (
                     <div className="bg-popover border rounded p-2 text-xs">
                       <p className="font-medium">{payload[0].payload.channel}</p>
@@ -183,7 +183,7 @@ export default function OffersPage() {
       {/* Full channel table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Channel Discount Breakdown</CardTitle>
+          <CardTitle className="text-base font-semibold">Channel Discount Breakdown</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -194,15 +194,15 @@ export default function OffersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs">Channel</TableHead>
-                  <TableHead className="text-xs text-right">Total Orders</TableHead>
-                  <TableHead className="text-xs text-right">Discounted Orders</TableHead>
-                  <TableHead className="text-xs text-right">Discount %</TableHead>
-                  <TableHead className="text-xs text-right">Total Revenue</TableHead>
-                  <TableHead className="text-xs text-right">Total Discount</TableHead>
-                  <TableHead className="text-xs text-right">Avg Discount</TableHead>
-                  <TableHead className="text-xs text-right">Discount Rate</TableHead>
-                  <TableHead className="text-xs">Action</TableHead>
+                  <TableHead className="text-sm">Channel</TableHead>
+                  <TableHead className="text-sm text-right">Total Orders</TableHead>
+                  <TableHead className="text-sm text-right">Discounted Orders</TableHead>
+                  <TableHead className="text-sm text-right">Discount %</TableHead>
+                  <TableHead className="text-sm text-right">Total Revenue</TableHead>
+                  <TableHead className="text-sm text-right">Total Discount</TableHead>
+                  <TableHead className="text-sm text-right">Avg Discount</TableHead>
+                  <TableHead className="text-sm text-right">Discount Rate</TableHead>
+                  <TableHead className="text-sm">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -210,22 +210,22 @@ export default function OffersPage() {
                   const ordPct = c.totalOrders > 0 ? (c.discountedOrders / c.totalOrders) * 100 : 0
                   return (
                     <TableRow key={i}>
-                      <TableCell className="text-xs font-medium">{c.channel}</TableCell>
-                      <TableCell className="text-xs text-right">{c.totalOrders}</TableCell>
-                      <TableCell className="text-xs text-right">{c.discountedOrders}</TableCell>
-                      <TableCell className="text-xs text-right">{ordPct.toFixed(1)}%</TableCell>
-                      <TableCell className="text-xs text-right">£{c.totalRevenue.toFixed(2)}</TableCell>
-                      <TableCell className="text-xs text-right">£{c.totalDiscount.toFixed(2)}</TableCell>
-                      <TableCell className="text-xs text-right">£{c.avgDiscount.toFixed(2)}</TableCell>
-                      <TableCell className="text-xs text-right">
-                        <span className={c.discountRate > 20 ? "text-destructive font-semibold" : c.discountRate > 10 ? "text-[oklch(0.75_0.18_75)]" : ""}>
+                      <TableCell className="text-sm font-medium">{c.channel}</TableCell>
+                      <TableCell className="text-sm text-right">{c.totalOrders}</TableCell>
+                      <TableCell className="text-sm text-right">{c.discountedOrders}</TableCell>
+                      <TableCell className="text-sm text-right">{ordPct.toFixed(1)}%</TableCell>
+                      <TableCell className="text-sm text-right">£{c.totalRevenue.toFixed(2)}</TableCell>
+                      <TableCell className="text-sm text-right">£{c.totalDiscount.toFixed(2)}</TableCell>
+                      <TableCell className="text-sm text-right">£{c.avgDiscount.toFixed(2)}</TableCell>
+                      <TableCell className="text-sm text-right">
+                        <span className={c.discountRate > 20 ? "text-destructive font-semibold" : c.discountRate > 10 ? "text-warning" : ""}>
                           {c.discountRate}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-xs">
-                        {c.discountRate > 20 ? <Badge variant="destructive" className="text-[10px]">Reduce offers</Badge>
-                          : c.discountRate > 10 ? <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">Review</Badge>
-                          : <Badge variant="outline" className="text-[10px]">Healthy</Badge>}
+                      <TableCell className="text-sm">
+                        {c.discountRate > 20 ? <Badge variant="destructive" className="text-xs">Reduce offers</Badge>
+                          : c.discountRate > 10 ? <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">Review</Badge>
+                          : <Badge variant="outline" className="text-xs">Healthy</Badge>}
                       </TableCell>
                     </TableRow>
                   )
@@ -240,30 +240,30 @@ export default function OffersPage() {
       {!loading && (
         <Card>
           <CardHeader className="pb-2 text-center">
-            <CardTitle className="text-sm font-semibold">Offer Recommendations</CardTitle>
+            <CardTitle className="text-base font-semibold">Offer Recommendations</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-2 text-xs">
               {discountRate > 20 && (
                 <div className="flex gap-2">
-                  <Badge variant="destructive" className="shrink-0 text-[10px]">Critical</Badge>
+                  <Badge variant="destructive" className="shrink-0 text-xs">Critical</Badge>
                   <span>Discount rate is {discountRate.toFixed(1)}% — above the 20% risk threshold. Identify which channels carry the highest rate and reduce promotional frequency.</span>
                 </div>
               )}
               {byChannel.find((c) => c.discountRate > 25) && (
                 <div className="flex gap-2">
-                  <Badge variant="destructive" className="shrink-0 text-[10px]">High Risk</Badge>
+                  <Badge variant="destructive" className="shrink-0 text-xs">High Risk</Badge>
                   <span><strong>{byChannel.find((c) => c.discountRate > 25)?.channel}</strong> has a {byChannel.find((c) => c.discountRate > 25)?.discountRate}% discount rate — consider removing or capping offers on this channel.</span>
                 </div>
               )}
               {discountRate < 10 && (
                 <div className="flex gap-2">
-                  <Badge className="shrink-0 text-[10px] bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)]">Healthy</Badge>
+                  <Badge className="shrink-0 text-xs bg-success-subtle text-success">Healthy</Badge>
                   <span>Discount rate is within healthy range. Focus offers on high-margin items to drive volume without impacting profitability.</span>
                 </div>
               )}
               <div className="flex gap-2">
-                <Badge variant="outline" className="shrink-0 text-[10px]">Strategy</Badge>
+                <Badge variant="outline" className="shrink-0 text-xs">Strategy</Badge>
                 <span>Avoid discounting STAR items. Use offers on PROMOTE items to increase their visibility and sell-through.</span>
               </div>
             </div>

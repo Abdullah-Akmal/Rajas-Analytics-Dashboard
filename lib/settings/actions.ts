@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { analyticsSettings, pricingSettings } from "@/lib/db/schema"
 import { sql } from "drizzle-orm"
 import {
-  SETTINGS, STORES, CHANNELS, scopeId, type SettingDef,
+  SETTINGS, STORES, CHANNELS, scopeId, isNumeric, type SettingDef,
 } from "@/lib/settings/catalog"
 
 function safeRevalidate(path: string) {
@@ -20,7 +20,8 @@ export type ResolvedSetting = {
   key: string
   store: string | null
   channel: string | null
-  value: number
+  /** Numeric for most settings; a string for "choice" units such as revenue_basis. */
+  value: number | string
   /** Where this value came from — drives the "Default"/"Sheet"/"Edited" badge. */
   source: "override" | "sheet" | "default"
   updatedAt: string | null
@@ -46,7 +47,7 @@ export async function getResolvedSettings(): Promise<ResolvedSetting[]> {
     if (ov) {
       out.push({
         key: def.key, store, channel,
-        value: Number(ov.value),
+        value: isNumeric(def) ? Number(ov.value) : ov.value,
         source: "override",
         updatedAt: ov.updatedAt ? new Date(ov.updatedAt).toISOString() : null,
       })
@@ -77,13 +78,13 @@ export async function updateSetting(
   key: string,
   store: string | null,
   channel: string | null,
-  value: number | null,
+  value: number | string | null,
 ) {
   const def = SETTINGS.find((s) => s.key === key)
   if (!def) return { success: false, error: `Unknown setting: ${key}` }
 
   try {
-    if (value === null || Number.isNaN(value)) {
+    if (value === null || (typeof value === "number" && Number.isNaN(value))) {
       await db.execute(sql`
         DELETE FROM analytics_settings
          WHERE key = ${key}
@@ -117,11 +118,22 @@ export async function updateSetting(
 export async function getSettingsLookup() {
   const resolved = await getResolvedSettings()
   const map = new Map(resolved.map((r) => [scopeId(r.key, r.store, r.channel), r.value]))
-  return (key: string, store?: string | null, channel?: string | null): number => {
-    const def = SETTINGS.find((s) => s.key === key)
+
+  const raw = (key: string, store?: string | null, channel?: string | null) => {
     const exact = map.get(scopeId(key, store ?? null, channel ?? null))
     if (exact !== undefined) return exact
     // A store-scoped setting asked for without a store falls back to the catalog default.
-    return def?.default ?? 0
+    return SETTINGS.find((s) => s.key === key)?.default ?? 0
   }
+
+  const fn = (key: string, store?: string | null, channel?: string | null): number =>
+    Number(raw(key, store, channel)) || 0
+  /** For "choice" settings such as revenue_basis, where the value is a string key. */
+  fn.text = (key: string, store?: string | null, channel?: string | null): string =>
+    String(raw(key, store, channel))
+  /** For "boolean" settings, persisted as 1/0. */
+  fn.bool = (key: string, store?: string | null, channel?: string | null): boolean =>
+    Number(raw(key, store, channel)) === 1
+
+  return fn
 }

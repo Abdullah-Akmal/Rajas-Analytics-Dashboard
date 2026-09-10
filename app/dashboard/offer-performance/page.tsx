@@ -26,8 +26,8 @@ function num(v: unknown) { return Number(v ?? 0) }
 // Offer effectiveness: blends AOV uplift vs overall + margin retention into a label
 function effectiveness(aovUpliftPct: number, marginPct: number, overallMarginPct: number) {
   const marginGap = marginPct - overallMarginPct
-  if (aovUpliftPct >= 0 && marginGap >= -5) return { label: "Strong", color: "bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)] border-[oklch(0.35_0.08_150)]", note: "Higher-than-average baskets with healthy margin" }
-  if (aovUpliftPct >= -10 && marginGap >= -12) return { label: "Moderate", color: "bg-[oklch(0.25_0.1_75)] text-[oklch(0.75_0.18_75)] border-[oklch(0.38_0.1_75)]", note: "Acceptable, but watch margin or basket size" }
+  if (aovUpliftPct >= 0 && marginGap >= -5) return { label: "Strong", color: "bg-success-subtle text-success border-success-subtle", note: "Higher-than-average baskets with healthy margin" }
+  if (aovUpliftPct >= -10 && marginGap >= -12) return { label: "Moderate", color: "bg-warning-subtle text-warning border-warning-subtle", note: "Acceptable, but watch margin or basket size" }
   return { label: "Weak", color: "bg-destructive/15 text-destructive border-destructive/30", note: "Low baskets and/or eroded margin — review this offer" }
 }
 
@@ -102,7 +102,7 @@ export default function OfferPerformancePage() {
         <CardHeader className="pb-2 text-center">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Sparkles className="size-4" /> Currently Available Offers
-            {!loading && <Badge variant="outline" className="ml-1 text-[10px]">{liveOffers.length} live</Badge>}
+            {!loading && <Badge variant="outline" className="ml-1 text-xs">{liveOffers.length} live</Badge>}
           </CardTitle>
           <CardDescription className="text-xs">
             Offers still being redeemed as of {catalogue?.asOf ?? "the latest sync"} — an offer counts as live if it was
@@ -124,15 +124,15 @@ export default function OfferPerformancePage() {
           ) : (
             <div className="flex flex-wrap gap-2">
               {liveOffers.map((o) => (
-                <div key={o.offer} className="rounded-lg border border-[oklch(0.35_0.08_150)] bg-[oklch(0.25_0.08_150)]/40 px-3 py-2 min-w-52">
+                <div key={o.offer} className="rounded-lg border border-success-subtle bg-success-subtle/40 px-3 py-2 min-w-52">
                   <div className="flex items-center gap-2">
-                    <span className="size-1.5 rounded-full bg-[oklch(0.7_0.15_150)]" />
+                    <span className="size-1.5 rounded-full bg-success" />
                     <span className="text-xs font-semibold text-foreground">{o.offer}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {o.orders.toLocaleString()} redemptions all-time · £{o.revenue.toFixed(0)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Running since {o.firstSeen} · last used {o.daysSince === 0 ? "today" : `${o.daysSince}d ago`}
                   </p>
                 </div>
@@ -163,15 +163,15 @@ export default function OfferPerformancePage() {
                 >
                   <span className="font-semibold flex items-center gap-1.5">
                     {o.offer}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
                       sel?.offer === o.offer
                         ? "border-primary-foreground/40 text-primary-foreground/90"
                         : o.available
-                          ? "border-[oklch(0.35_0.08_150)] text-[oklch(0.7_0.15_150)]"
+                          ? "border-success-subtle text-success"
                           : "border-border text-muted-foreground"
                     }`}>{o.available ? "Live" : "Ended"}</span>
                   </span>
-                  <span className={`text-[10px] block mt-0.5 ${sel?.offer === o.offer ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                  <span className={`text-xs block mt-0.5 ${sel?.offer === o.offer ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                     {o.rangeOrders > 0
                       ? `${o.rangeOrders} orders · £${o.rangeRevenue.toFixed(0)} in period`
                       : `Not used in this period · last ${o.lastSeen}`}
@@ -208,7 +208,7 @@ export default function OfferPerformancePage() {
                       ) : (
                         <p className={`text-xl font-bold mt-1.5 ${k.danger ? "text-destructive" : "text-foreground"}`}>{k.value}</p>
                       )}
-                      {k.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</p>}
+                      {k.sub && <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>}
                     </>
                   )}
                 </CardContent>
@@ -250,9 +250,9 @@ export default function OfferPerformancePage() {
                 <ChartContainer config={chartCfg} className="h-52 w-full">
                   <LineChart data={sel.dailyTrend} margin={{ left: 0, right: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => `£${v}`} />
+                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                     <ChartTooltip content={({ payload }) => payload?.[0] ? (
                       <div className="bg-popover border rounded p-2 text-xs">
                         <p className="font-medium">{payload[0].payload.date}</p>
@@ -302,7 +302,7 @@ export default function OfferPerformancePage() {
                         <TableCell className="text-xs">
                           <button
                             onClick={() => { setOffer(o.offer); fetchData(filters, o.offer) }}
-                            className="text-primary hover:underline text-[11px]"
+                            className="text-primary hover:underline text-sm"
                           >
                             {sel?.offer === o.offer ? "Viewing" : "View"}
                           </button>

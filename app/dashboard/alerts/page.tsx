@@ -31,19 +31,19 @@ const SEVERITY_STYLE: Record<Severity, { badge: string; icon: React.ReactNode; b
     border: "border-l-4 border-l-destructive",
   },
   warning: {
-    badge: "bg-[oklch(0.25_0.1_75)] text-[oklch(0.75_0.18_75)] border-[oklch(0.38_0.1_75)]",
+    badge: "bg-warning-subtle text-warning border-warning-subtle",
     icon: <TrendingDown className="size-3.5" />,
-    border: "border-l-4 border-l-[oklch(0.55_0.18_75)]",
+    border: "border-l-4 border-l-[var(--warning)]",
   },
   info: {
-    badge: "bg-[oklch(0.22_0.08_220)] text-[oklch(0.65_0.15_220)] border-[oklch(0.35_0.08_220)]",
+    badge: "bg-info text-info border-info",
     icon: <Zap className="size-3.5" />,
-    border: "border-l-4 border-l-[oklch(0.55_0.15_220)]",
+    border: "border-l-4 border-l-[var(--info)]",
   },
   ok: {
-    badge: "bg-[oklch(0.25_0.08_150)] text-[oklch(0.7_0.15_150)] border-[oklch(0.35_0.08_150)]",
+    badge: "bg-success-subtle text-success border-success-subtle",
     icon: <CheckCircle className="size-3.5" />,
-    border: "border-l-4 border-l-[oklch(0.55_0.15_150)]",
+    border: "border-l-4 border-l-[var(--success)]",
   },
 }
 
@@ -332,7 +332,7 @@ export default function AlertsPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${style.badge}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${style.badge}`}>
                         {style.icon}
                         {alert.severity.toUpperCase()}
                       </span>
@@ -340,7 +340,7 @@ export default function AlertsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold text-foreground">{alert.title}</p>
-                        {alert.channel && <Badge variant="outline" className="text-[10px]">{alert.channel}</Badge>}
+                        {alert.channel && <Badge variant="outline" className="text-xs">{alert.channel}</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 whitespace-pre-line">{alert.detail}</p>
                       {alert.impact && (
