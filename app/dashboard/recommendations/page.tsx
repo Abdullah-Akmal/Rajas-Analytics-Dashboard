@@ -165,7 +165,7 @@ export default function RecommendationsPage() {
   const periodCards = [
     {
       key: "quiet", title: "Quiet Periods", icon: <Moon className="size-4" />,
-      accent: "border-l-[var(--info)]", chip: "bg-info text-info border-info",
+      accent: "border-l-[var(--info)]", chip: "bg-info-subtle text-info border-info",
       data: periods.quiet,
       push: promote.slice(0, 4),
       offers: ["Time-boxed % discount (e.g. 20% off) to pull demand forward", "“Quiet-hour” meal deal on high-margin items", "Free side with any main to drive footfall"],

@@ -15,16 +15,14 @@ import { ShoppingCart, PoundSterling, TrendingUp, Hash } from "lucide-react"
 
 type PlatformRow = Awaited<ReturnType<typeof getPlatformPerformance>>[number]
 
-const COLORS = [
-  "var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)",
-  "var(--color-chart-4)", "var(--color-chart-5)",
-]
+// One hue stepped by lightness — platforms are categories, not statuses (item 72).
+const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 
 const chartCfg = {
   totalRevenue: { label: "Revenue", color: "var(--color-chart-1)" },
-  totalOrders: { label: "Orders", color: "var(--color-chart-2)" },
-  avgOrderValue: { label: "Avg Order", color: "var(--color-chart-3)" },
-  totalDiscount: { label: "Discounts", color: "var(--color-chart-5)" },
+  totalOrders: { label: "Orders", color: "var(--series-2)" },
+  avgOrderValue: { label: "Avg Order", color: "var(--series-3)" },
+  totalDiscount: { label: "Discounts", color: "var(--warning)" },
 }
 
 function num(v: unknown) { return Number(v ?? 0) }

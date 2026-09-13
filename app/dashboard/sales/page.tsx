@@ -19,16 +19,19 @@ type ItemRow = Awaited<ReturnType<typeof getItemProfitability>>[number]
 
 const chartCfg = {
   totalRevenue: { label: "Revenue", color: "var(--color-chart-1)" },
-  totalQty: { label: "Units Sold", color: "var(--color-chart-2)" },
-  grossProfit: { label: "Gross Profit", color: "var(--color-chart-3)" },
+  totalQty: { label: "Units Sold", color: "var(--series-2)" },
+  grossProfit: { label: "Gross Profit", color: "var(--success)" },
 }
 
 // Hex values work in both CSS and SVG fill attributes (oklch can break in SVG on some browsers)
+// Classification IS the meaning, so these four keep colour — good / informational /
+// warning / problem — matched to the semantic tokens but a stop darker for a light
+// background.
 const QUAD_COLORS = {
-  STAR:    "#22c55e", // green
-  PROMOTE: "#3b82f6", // blue
-  FIX:     "#f59e0b", // amber
-  REMOVE:  "#ef4444", // red
+  STAR:    "#15803d", // good
+  PROMOTE: "#1d4ed8", // informational
+  FIX:     "#b45309", // warning
+  REMOVE:  "#b91c1c", // problem
 }
 
 function classifyItem(qty: number, margin: number, medianQty: number): "STAR" | "PROMOTE" | "FIX" | "REMOVE" {
@@ -42,7 +45,7 @@ function classifyItem(qty: number, margin: number, medianQty: number): "STAR" | 
 
 const QUAD_LABELS: Record<string, { label: string; color: string; desc: string }> = {
   STAR: { label: "STAR", color: "bg-success-subtle text-success border-success-subtle", desc: "High popularity, high margin — push hard" },
-  PROMOTE: { label: "PROMOTE", color: "bg-info text-info border-info", desc: "Low popularity, high margin — feature in offers" },
+  PROMOTE: { label: "PROMOTE", color: "bg-info-subtle text-info border-info", desc: "Low popularity, high margin — feature in offers" },
   FIX: { label: "FIX", color: "bg-warning-subtle text-warning border-warning-subtle", desc: "High popularity, low margin — reprice or rework" },
   REMOVE: { label: "REMOVE", color: "bg-destructive/20 text-destructive border-destructive/30", desc: "Low popularity, low margin — consider removing" },
 }
@@ -437,7 +440,7 @@ export default function SalesPage() {
                       <XAxis type="number" tick={{ fontSize: 12 }} />
                       <YAxis type="category" dataKey="itemName" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v.length > 16 ? v.substring(0, 16) + "…" : v} />
                       <ChartTooltip content={({ payload }) => payload?.[0] ? <div className="bg-popover border rounded p-2 text-xs"><p className="font-medium">{payload[0].payload.itemName}</p><p>{num(payload[0].value).toFixed(0)} units</p></div> : null} />
-                      <Bar dataKey="totalQty" fill="var(--color-chart-2)" radius={3} name="Units" />
+                      <Bar dataKey="totalQty" fill="var(--series-2)" radius={3} name="Units" />
                     </BarChart>
                   </ChartContainer>
                 )}
@@ -455,7 +458,7 @@ export default function SalesPage() {
             </CardHeader>
             <CardContent>
               {loading ? <Skeleton className="h-64 w-full" /> : (
-                <ChartContainer config={{ ...chartCfg, cumPct: { label: "Cumulative %", color: "var(--color-chart-4)" } }} className="h-64 w-full">
+                <ChartContainer config={{ ...chartCfg, cumPct: { label: "Cumulative %", color: "var(--series-3)" } }} className="h-64 w-full">
                   <ComposedChart data={pareto} margin={{ left: 0, right: 24 }}>
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-35} textAnchor="end" height={50} />
                     <YAxis yAxisId="left" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
@@ -468,7 +471,7 @@ export default function SalesPage() {
                       </div>
                     ) : null} />
                     <Bar yAxisId="left" dataKey="revenue" fill="var(--color-chart-1)" radius={3} name="Revenue" />
-                    <Line yAxisId="right" type="monotone" dataKey="cumPct" stroke="var(--color-chart-4)" dot={false} strokeWidth={2} name="Cumulative %" />
+                    <Line yAxisId="right" type="monotone" dataKey="cumPct" stroke="var(--series-3)" dot={false} strokeWidth={2} name="Cumulative %" />
                   </ComposedChart>
                 </ChartContainer>
               )}

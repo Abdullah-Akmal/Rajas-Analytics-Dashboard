@@ -28,6 +28,12 @@
   --color-danger: var(--danger);
   --color-danger-subtle: var(--danger-subtle);
   --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -56,6 +62,66 @@
 }
 
 :root {
+  color-scheme: light;
+  /* Light, high-contrast surface (item 70). Body text sits at ~15:1 on the page
+     background and ~16:1 on a card, so nothing depends on squinting. */
+  --background: oklch(0.985 0.003 240);
+  --foreground: oklch(0.21 0.015 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.015 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.015 240);
+  /* Brand orange darkened until white text on it clears 4.5:1. */
+  --primary: oklch(0.55 0.19 35);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.005 240);
+  --secondary-foreground: oklch(0.28 0.015 240);
+  --muted: oklch(0.955 0.005 240);
+  --muted-foreground: oklch(0.45 0.012 240);
+  /* Hover/accent is a quiet grey, not the brand colour: hovering a row should not
+     look like a status. */
+  --accent: oklch(0.945 0.006 240);
+  --accent-foreground: oklch(0.24 0.015 240);
+  --destructive: oklch(0.52 0.21 27);
+  --border: oklch(0.9 0.006 240);
+  --input: oklch(0.86 0.008 240);
+  --ring: oklch(0.55 0.19 35);
+  --chart-1: oklch(0.55 0.19 35);
+  --chart-2: oklch(0.5 0.12 235);
+  --chart-3: oklch(0.5 0.13 152);
+  --chart-4: oklch(0.5 0.16 290);
+  --chart-5: oklch(0.58 0.13 75);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.97 0.004 240);
+  --sidebar-foreground: oklch(0.26 0.015 240);
+  --sidebar-primary: oklch(0.55 0.19 35);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.93 0.008 240);
+  --sidebar-accent-foreground: oklch(0.24 0.015 240);
+  --sidebar-border: oklch(0.9 0.006 240);
+  --sidebar-ring: oklch(0.55 0.19 35);
+  /* Semantic colours (item 72). Colour carries MEANING only: good, warning,
+     problem, informational. Anything decorative uses the neutral greys above. */
+  --success: oklch(0.5 0.13 152);
+  --success-subtle: oklch(0.95 0.045 152);
+  --warning: oklch(0.5 0.11 70);
+  --warning-subtle: oklch(0.955 0.05 85);
+  --danger: oklch(0.52 0.21 27);
+  --danger-subtle: oklch(0.955 0.045 27);
+  --info: oklch(0.5 0.12 235);
+  --info-subtle: oklch(0.95 0.035 235);
+  /* One-hue ramp for "share of total" charts (pie slices, per-platform bars).
+     Categories are told apart by lightness, so no chart invents five unrelated
+     meanings-by-colour (item 72 / Operations UI). */
+  --series-1: oklch(0.4 0.1 240);
+  --series-2: oklch(0.47 0.09 240);
+  --series-3: oklch(0.545 0.085 240);
+  --series-4: oklch(0.615 0.075 240);
+  --series-5: oklch(0.655 0.07 240);
+}
+
+/* Dark theme kept intact behind .dark so the owner can switch back if wanted. */
+.dark {
   color-scheme: dark;
   --background: oklch(0.17 0.012 240);
   --foreground: oklch(0.95 0 0);
@@ -68,10 +134,9 @@
   --secondary: oklch(0.28 0.012 240);
   --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.28 0.012 240);
-  /* Was 0.6 — too low against the card to read comfortably at small sizes. */
   --muted-foreground: oklch(0.76 0 0);
-  --accent: oklch(0.72 0.19 35);
-  --accent-foreground: oklch(0.1 0 0);
+  --accent: oklch(0.3 0.012 240);
+  --accent-foreground: oklch(0.92 0 0);
   --destructive: oklch(0.65 0.22 27);
   --border: oklch(1 0 0 / 14%);
   --input: oklch(1 0 0 / 18%);
@@ -81,7 +146,6 @@
   --chart-3: oklch(0.7 0.15 150);
   --chart-4: oklch(0.65 0.18 280);
   --chart-5: oklch(0.68 0.16 60);
-  --radius: 0.625rem;
   --sidebar: oklch(0.19 0.012 240);
   --sidebar-foreground: oklch(0.9 0 0);
   --sidebar-primary: oklch(0.72 0.19 35);
@@ -90,8 +154,6 @@
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: oklch(1 0 0 / 14%);
   --sidebar-ring: oklch(0.72 0.19 35);
-  /* Semantic colours (item 72). Colour carries MEANING only: good, warning,
-     problem, informational. Anything decorative uses the neutral greys above. */
   --success: oklch(0.78 0.16 150);
   --success-subtle: oklch(0.3 0.06 150);
   --warning: oklch(0.83 0.16 80);
@@ -99,8 +161,13 @@
   --danger: oklch(0.72 0.19 27);
   --danger-subtle: oklch(0.32 0.09 27);
   --info: oklch(0.75 0.12 220);
+  --info-subtle: oklch(0.3 0.06 220);
+  --series-1: oklch(0.88 0.08 240);
+  --series-2: oklch(0.8 0.085 240);
+  --series-3: oklch(0.72 0.08 240);
+  --series-4: oklch(0.64 0.075 240);
+  --series-5: oklch(0.56 0.07 240);
 }
-
 
 
 @layer base {

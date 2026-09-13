@@ -28,13 +28,13 @@ const CATEGORY_OPTS = ["Pricing", "Offers", "Platform", "Delivery", "Menu", "Sta
 
 function statusStyle(s: string) {
   if (s === "done") return "bg-success-subtle text-success border-success-subtle"
-  if (s === "in_progress") return "bg-info text-info border-info"
+  if (s === "in_progress") return "bg-info-subtle text-info border-info"
   return "bg-secondary text-muted-foreground border-border"
 }
 function priorityStyle(p: string) {
   if (p === "high") return "bg-destructive/15 text-destructive border-destructive/30"
   if (p === "medium") return "bg-warning-subtle text-warning border-warning-subtle"
-  return "bg-info text-info border-info"
+  return "bg-info-subtle text-info border-info"
 }
 
 export default function ActionsPage() {

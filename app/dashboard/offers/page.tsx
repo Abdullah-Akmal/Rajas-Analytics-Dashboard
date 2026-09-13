@@ -15,13 +15,14 @@ import { Tag, TrendingDown, AlertTriangle, PoundSterling } from "lucide-react"
 
 type OfferRow = Awaited<ReturnType<typeof getOfferAnalysis>>[number]
 
-const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"]
+// One hue stepped by lightness — channels are categories, not statuses (item 72).
+const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 
 const chartCfg = {
-  totalDiscount: { label: "Total Discounts", color: "var(--color-chart-5)" },
+  totalDiscount: { label: "Total Discounts", color: "var(--warning)" },
   discountedOrders: { label: "Discounted Orders", color: "var(--color-chart-1)" },
-  totalRevenue: { label: "Revenue", color: "var(--color-chart-2)" },
-  discountRate: { label: "Discount Rate %", color: "var(--color-chart-3)" },
+  totalRevenue: { label: "Revenue", color: "var(--series-2)" },
+  discountRate: { label: "Discount Rate %", color: "var(--series-3)" },
 }
 
 function num(v: unknown) { return Number(v ?? 0) }
@@ -170,7 +171,7 @@ export default function OffersPage() {
                   ) : null} />
                   <Bar dataKey="discountRate" radius={4} name="Discount Rate %">
                     {byChannel.map((_, i) => (
-                      <Cell key={i} fill={byChannel[i].discountRate > 20 ? "var(--color-destructive, #ef4444)" : byChannel[i].discountRate > 10 ? "var(--color-chart-5)" : "var(--color-chart-3)"} />
+                      <Cell key={i} fill={byChannel[i].discountRate > 20 ? "var(--danger)" : byChannel[i].discountRate > 10 ? "var(--warning)" : "var(--success)"} />
                     ))}
                   </Bar>
                 </BarChart>

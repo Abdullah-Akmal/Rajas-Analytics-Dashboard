@@ -18,7 +18,7 @@ type OfferRow = { offer: string; orders: number; units: number; offerRevenue: nu
 
 const chartCfg = {
   orders: { label: "Orders", color: "var(--color-chart-1)" },
-  revenue: { label: "Revenue", color: "var(--color-chart-2)" },
+  revenue: { label: "Revenue", color: "var(--series-2)" },
 }
 
 function num(v: unknown) { return Number(v ?? 0) }
@@ -261,7 +261,7 @@ export default function OfferPerformancePage() {
                       </div>
                     ) : null} />
                     <Line yAxisId="left" type="monotone" dataKey="orders" stroke="var(--color-chart-1)" dot={false} strokeWidth={2} name="Orders" />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="var(--color-chart-2)" dot={false} strokeWidth={1.5} strokeDasharray="4 4" name="Revenue" />
+                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="var(--series-2)" dot={false} strokeWidth={1.5} strokeDasharray="4 4" name="Revenue" />
                   </LineChart>
                 </ChartContainer>
               )}

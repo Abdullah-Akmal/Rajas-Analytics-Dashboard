@@ -25,8 +25,8 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 // Two neutral series colours — store separation, not decoration.
 const STORE_COLORS: Record<string, string> = {
-  "Hyde Park": "var(--color-chart-1)",
-  "Grand Arcade": "var(--color-chart-2)",
+  "Hyde Park": "var(--series-1)",
+  "Grand Arcade": "var(--series-3)",
 }
 const MODE_LABEL: Record<string, string> = {
   walk_in: "Walk-in", dine_in: "Dine-in", collection: "Collection", delivery: "Delivery", unknown: "Unknown",

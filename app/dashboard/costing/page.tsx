@@ -31,8 +31,8 @@ type ItemRow = {
 }
 
 const chartConfig = {
-  grossProfit: { label: "Gross Profit", color: "var(--color-chart-1)" },
-  marginPercent: { label: "Margin %", color: "var(--color-chart-3)" },
+  grossProfit: { label: "Gross Profit", color: "var(--success)" },
+  marginPercent: { label: "Margin %", color: "var(--series-1)" },
 }
 
 export default function CostingPage() {
@@ -300,7 +300,7 @@ export default function CostingPage() {
                       <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
                       <YAxis type="category" dataKey="category" tick={{ fontSize: 12 }} width={110} tickFormatter={(v) => v?.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="grossProfit" fill="var(--color-chart-3)" radius={4} name="Gross Profit" />
+                      <Bar dataKey="grossProfit" fill="var(--success)" radius={4} name="Gross Profit" />
                     </BarChart>
                   </ChartContainer>
                 )}
@@ -324,7 +324,7 @@ export default function CostingPage() {
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="marginPercent" radius={4} name="Margin %">
                         {[...(categories as Record<string, unknown>[])].sort((a, b) => Number(b.marginPercent) - Number(a.marginPercent)).slice(0, 10).map((c, i) => (
-                          <Cell key={i} fill={Number(c.marginPercent) >= 60 ? "var(--color-chart-3)" : Number(c.marginPercent) >= 40 ? "var(--color-chart-5)" : "var(--color-destructive)"} />
+                          <Cell key={i} fill={Number(c.marginPercent) >= 60 ? "var(--success)" : Number(c.marginPercent) >= 40 ? "var(--warning)" : "var(--danger)"} />
                         ))}
                       </Bar>
                     </BarChart>

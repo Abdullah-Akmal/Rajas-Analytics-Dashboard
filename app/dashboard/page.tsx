@@ -16,15 +16,17 @@ import { Badge } from "@/components/ui/badge"
 import { format, subDays } from "date-fns"
 import { PoundSterling, ShoppingBag, TrendingUp, Percent, Package, Truck } from "lucide-react"
 
-const CHART_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"]
+// Share-of-total charts use one hue stepped by lightness, not five unrelated
+// colours: the slices are categories, not statuses (item 72).
+const CHART_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 
 const chartConfig = {
   revenue: { label: "Revenue", color: "var(--color-chart-1)" },
-  orders: { label: "Orders", color: "var(--color-chart-2)" },
-  profit: { label: "Profit", color: "var(--color-chart-3)" },
+  orders: { label: "Orders", color: "var(--series-2)" },
+  profit: { label: "Profit", color: "var(--success)" },
   totalRevenue: { label: "Total", color: "var(--color-chart-1)" },
-  hydeParkRevenue: { label: "Hyde Park", color: "var(--color-chart-2)" },
-  grandArcadeRevenue: { label: "Grand Arcade", color: "var(--color-chart-4)" },
+  hydeParkRevenue: { label: "Hyde Park", color: "var(--series-1)" },
+  grandArcadeRevenue: { label: "Grand Arcade", color: "var(--series-3)" },
 }
 
 /** Headline KPIs plus the §6 comparable-period change block. */
@@ -262,8 +264,8 @@ export default function DashboardPage() {
                   {filters.location === "all" ? (
                     <>
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Line type="monotone" dataKey="hydeParkRevenue" stroke="var(--color-chart-2)" strokeWidth={2} dot={false} name="Hyde Park" />
-                      <Line type="monotone" dataKey="grandArcadeRevenue" stroke="var(--color-chart-4)" strokeWidth={2} dot={false} name="Grand Arcade" />
+                      <Line type="monotone" dataKey="hydeParkRevenue" stroke="var(--series-1)" strokeWidth={2} dot={false} name="Hyde Park" />
+                      <Line type="monotone" dataKey="grandArcadeRevenue" stroke="var(--series-3)" strokeWidth={2} dot={false} name="Grand Arcade" />
                     </>
                   ) : (
                     <Line type="monotone" dataKey="totalRevenue" stroke="var(--color-chart-1)" strokeWidth={2} dot={false} name="Revenue" />
@@ -445,7 +447,7 @@ export default function DashboardPage() {
                         </div>
                       ) : null}
                     />
-                    <Bar dataKey="grossProfit" fill="var(--color-chart-3)" radius={4} name="Gross Profit £" />
+                    <Bar dataKey="grossProfit" fill="var(--success)" radius={4} name="Gross Profit £" />
                   </BarChart>
                 </ChartContainer>
               )

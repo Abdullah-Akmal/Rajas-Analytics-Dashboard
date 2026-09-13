@@ -36,7 +36,7 @@ const SEVERITY_STYLE: Record<Severity, { badge: string; icon: React.ReactNode; b
     border: "border-l-4 border-l-[var(--warning)]",
   },
   info: {
-    badge: "bg-info text-info border-info",
+    badge: "bg-info-subtle text-info border-info",
     icon: <Zap className="size-3.5" />,
     border: "border-l-4 border-l-[var(--info)]",
   },
